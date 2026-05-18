@@ -57,6 +57,13 @@ const BIBLE_THEMES = [
   { id: "clouds-1", label: "Clouds", image: "/backgrounds/clouds-1.jpg" },
 ];
 
+let bibleBooksCache = {
+  books: null,
+  loadedAt: 0,
+};
+
+const BIBLE_BOOKS_TTL_MS = 24 * 60 * 60 * 1000;
+
 function getLanIp() {
   const nets = os.networkInterfaces();
   for (const name of Object.keys(nets)) {
@@ -71,9 +78,13 @@ function getLanIp() {
 
 function normalizeBibleRef(raw) {
   try {
-    return decodeURIComponent(String(raw || "")).trim().replace(/\s+/g, " ");
+    return decodeURIComponent(String(raw || ""))
+      .trim()
+      .replace(/\s+/g, " ");
   } catch (_e) {
-    return String(raw || "").trim().replace(/\s+/g, " ");
+    return String(raw || "")
+      .trim()
+      .replace(/\s+/g, " ");
   }
 }
 
@@ -85,15 +96,32 @@ function bibleApiUrl(ref) {
 async function fetchBible(ref) {
   const clean = normalizeBibleRef(ref);
   if (!clean) {
-    throw new Error("Reference is required");
+    const err = new Error("Reference is required");
+    err.status = 400;
+    throw err;
   }
   const response = await fetch(bibleApiUrl(clean));
   if (!response.ok) {
-    const err = new Error("Verse not found");
+    const err = new Error("Verse or chapter not found");
     err.status = 404;
     throw err;
   }
   return response.json();
+}
+
+async function getBibleBooks() {
+  const now = Date.now();
+  if (bibleBooksCache.books && now - bibleBooksCache.loadedAt < BIBLE_BOOKS_TTL_MS) {
+    return bibleBooksCache.books;
+  }
+  const response = await fetch("https://bible-api.com/data");
+  if (!response.ok) {
+    throw new Error("Could not load Bible books");
+  }
+  const data = await response.json();
+  const books = Array.isArray(data) ? data : data.books || [];
+  bibleBooksCache = { books, loadedAt: now };
+  return books;
 }
 
 async function getPdfPageCount(filePath) {
@@ -205,12 +233,8 @@ app.get("/api/themes", (_req, res) => {
 
 app.get("/api/bible/books", async (_req, res) => {
   try {
-    const response = await fetch("https://bible-api.com/data");
-    if (!response.ok) {
-      return res.status(502).json({ error: "Could not load Bible books" });
-    }
-    const data = await response.json();
-    return res.json(data);
+    const books = await getBibleBooks();
+    return res.json({ books, count: books.length });
   } catch (err) {
     return res.status(500).json({ error: err.message || "Bible books failed" });
   }
@@ -218,9 +242,10 @@ app.get("/api/bible/books", async (_req, res) => {
 
 app.get("/api/bible/chapter/:ref(*)", async (req, res) => {
   try {
-    const data = await fetchBible(req.params.ref);
+    const ref = normalizeBibleRef(req.params.ref);
+    const data = await fetchBible(ref);
     const verses = data.verses || [];
-    const verseNumbers = verses.map((v) => v.verse).filter(Boolean);
+    const verseNumbers = verses.map((v) => Number(v.verse)).filter(Boolean);
     const maxVerse = verseNumbers.length ? Math.max(...verseNumbers) : 0;
     return res.json({
       reference: data.reference,
@@ -230,7 +255,9 @@ app.get("/api/bible/chapter/:ref(*)", async (req, res) => {
       verses,
     });
   } catch (err) {
-    return res.status(err.status || 500).json({ error: err.message || "Chapter lookup failed" });
+    return res
+      .status(err.status || 500)
+      .json({ error: err.message || "Chapter lookup failed" });
   }
 });
 
@@ -245,7 +272,9 @@ app.get("/api/bible/:ref(*)", async (req, res) => {
       translation_name: data.translation_name,
     });
   } catch (err) {
-    return res.status(err.status || 500).json({ error: err.message || "Bible lookup failed" });
+    return res
+      .status(err.status || 500)
+      .json({ error: err.message || "Bible lookup failed" });
   }
 });
 
@@ -363,14 +392,19 @@ io.on("connection", (socket) => {
 
   socket.on("show-verse", (data) => {
     const backgroundUrl =
-      data && data.backgroundUrl
-        ? data.backgroundUrl
-        : "/backgrounds/nature-1.jpg";
+      data && data.backgroundUrl ? data.backgroundUrl : "/backgrounds/nature-1.jpg";
     io.emit("show-verse", {
       reference: (data && data.reference) || "",
       text: (data && data.text) || "",
       theme: (data && data.theme) || "nature-1",
       backgroundUrl,
+    });
+  });
+
+  socket.on("video-control", (data) => {
+    io.emit("video-control", {
+      action: data && data.action ? data.action : "play",
+      time: typeof data?.time === "number" ? data.time : undefined,
     });
   });
 

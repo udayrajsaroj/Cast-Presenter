@@ -108,8 +108,6 @@
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
-  <motion-disabled>
-  <motion-disabled>
   <div id="waiting">Waiting for presenter…</div>
 
   <div id="stage">
@@ -123,9 +121,8 @@
   </div>
 
   <div id="verseStage">
-    <motion-disabled>
     <div id="verseBg"></div>
-    <div id="verseOverlay"></motion-disabled>
+    <div id="verseOverlay"></div>
     <div id="verseContent">
       <h1 id="verseRef"></h1>
       <p id="verseText"></p>
@@ -178,9 +175,7 @@
       castVideo.style.display = "none";
       try {
         castVideo.pause();
-      } catch (_e) {
-        /* ignore */
-      }
+      } catch (_e) {}
     }
 
     function showVerseView(payload) {
@@ -188,7 +183,6 @@
       waitingEl.style.display = "none";
       stageEl.style.display = "none";
       hideAllSlides();
-
       const bg = resolveUrl(payload.backgroundUrl || "/backgrounds/nature-1.jpg");
       verseBg.style.backgroundImage = `url('${bg}')`;
       verseRef.textContent = payload.reference || "";
@@ -199,9 +193,7 @@
     function hideVerseView() {
       verseStage.style.display = "none";
       verseBg.style.backgroundImage = "";
-      if (displayMode === "verse") {
-        displayMode = "document";
-      }
+      if (displayMode === "verse") displayMode = "document";
       stageEl.style.display = "flex";
     }
 
@@ -220,9 +212,7 @@
       if (renderTask) {
         try {
           renderTask.cancel();
-        } catch (_e) {
-          /* ignore */
-        }
+        } catch (_e) {}
       }
       renderTask = page.render({ canvasContext: ctx, viewport });
       await renderTask.promise;
@@ -238,7 +228,6 @@
       const slide = state.slideImages[pageNumber - 1];
       hideAllSlides();
       waitingEl.style.display = "none";
-
       if (!slide) {
         placeholderEl.style.display = "block";
         slideNumberEl.textContent = `Slide ${pageNumber}`;
@@ -258,17 +247,14 @@
     function renderVideo() {
       hideAllSlides();
       waitingEl.style.display = "none";
-      const url = resolveUrl(state.documentUrl || "/api/document/file");
-      if (castVideo.src !== url) {
-        castVideo.src = `${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`;
-      }
+      const base = resolveUrl(state.documentUrl || "/api/document/file");
+      castVideo.src = `${base}${base.includes("?") ? "&" : "?"}t=${Date.now()}`;
       castVideo.style.display = "block";
       castVideo.play().catch(() => {});
     }
 
     async function renderCurrent() {
       if (displayMode === "verse") return;
-
       if (!state.type || state.totalPages < 1) {
         hideAllSlides();
         waitingEl.style.display = "flex";
@@ -276,52 +262,42 @@
         stageEl.style.display = "flex";
         return;
       }
-
       waitingEl.style.display = "none";
       stageEl.style.display = "flex";
-
       if (state.type === "pdf") {
         if (!pdfDoc && state.documentUrl) {
-          await loadPdf(resolveUrl(state.documentUrl));
+          await loadPdf(
+            `${state.documentUrl}${state.documentUrl.includes("?") ? "&" : "?"}t=${Date.now()}`
+          );
         }
         await renderPdfPage(state.currentPage);
         return;
       }
-
       if (state.type === "pptx") {
         renderPptxSlide(state.currentPage);
         return;
       }
-
-      if (state.type === "video") {
-        renderVideo();
-      }
+      if (state.type === "video") renderVideo();
     }
 
     async function applyPayload(payload, reloadPdf) {
       hideVerseView();
       displayMode = "document";
-
       state.type = payload.type;
       state.totalPages = payload.totalPages || 0;
       state.currentPage = payload.currentPage || payload.page || 1;
       state.slideImages = payload.slideImages || [];
-
       if (payload.documentUrl) {
-        const base = payload.documentUrl.startsWith("http")
+        state.documentUrl = payload.documentUrl.startsWith("http")
           ? payload.documentUrl
           : resolveUrl(payload.documentUrl);
-        state.documentUrl = base;
       }
-
-      if (reloadPdf) {
-        pdfDoc = null;
-      }
-
+      if (reloadPdf) pdfDoc = null;
       if (state.type === "pdf" && state.documentUrl && reloadPdf) {
-        await loadPdf(`${state.documentUrl}${state.documentUrl.includes("?") ? "&" : "?"}t=${Date.now()}`);
+        await loadPdf(
+          `${state.documentUrl}${state.documentUrl.includes("?") ? "&" : "?"}t=${Date.now()}`
+        );
       }
-
       await renderCurrent();
     }
 
@@ -375,12 +351,11 @@
       if (state.type !== "video") return;
       if (payload.action === "play") castVideo.play().catch(() => {});
       if (payload.action === "pause") castVideo.pause();
-      if (typeof payload.time === "number") {
-        castVideo.currentTime = payload.time;
-      }
+      if (typeof payload.time === "number") castVideo.currentTime = payload.time;
     });
 
     socket.on("disconnect", () => {
+      hideVerseView();
       waitingEl.style.display = "flex";
       waitingEl.textContent = "Reconnecting…";
     });
