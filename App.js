@@ -21,6 +21,90 @@ import { WebView } from "react-native-webview";
 
 const STORAGE_KEY = "CAST_SERVER_URL";
 
+// COMPREHENSIVE LIST OF ALL 66 BIBLE BOOKS WITH ABBREVIATIONS
+const BIBLE_BOOKS = [
+  { name: "Genesis", abbr: ["gen", "ge", "gn"] },
+  { name: "Exodus", abbr: ["ex", "exo", "exod"] },
+  { name: "Leviticus", abbr: ["lev", "le", "lv"] },
+  { name: "Numbers", abbr: ["num", "nu", "nm"] },
+  { name: "Deuteronomy", abbr: ["deut", "de", "dt"] },
+  { name: "Joshua", abbr: ["josh", "jos", "jsh"] },
+  { name: "Judges", abbr: ["judg", "jdg", "jdgs", "jg"] },
+  { name: "Ruth", abbr: ["ruth", "ru", "rut"] },
+  { name: "1 Samuel", abbr: ["1 sam", "1sa", "1sm"] },
+  { name: "2 Samuel", abbr: ["2 sam", "2sa", "2sm"] },
+  { name: "1 Kings", abbr: ["1 kgs", "1 ki", "1kgs"] },
+  { name: "2 Kings", abbr: ["2 kgs", "2 ki", "2kgs"] },
+  { name: "1 Chronicles", abbr: ["1 chr", "1 ch", "1chron"] },
+  { name: "2 Chronicles", abbr: ["2 chr", "2 ch", "2chron"] },
+  { name: "Ezra", abbr: ["ezra", "ezr"] },
+  { name: "Nehemiah", abbr: ["neh", "ne"] },
+  { name: "Esther", abbr: ["esth", "est"] },
+  { name: "Job", abbr: ["job"] },
+  { name: "Psalms", abbr: ["ps", "psa", "psalm"] },
+  { name: "Proverbs", abbr: ["prov", "pr", "prv"] },
+  { name: "Ecclesiastes", abbr: ["eccles", "ec", "qoheleth"] },
+  { name: "Song of Solomon", abbr: ["song", "ss", "cant"] },
+  { name: "Isaiah", abbr: ["isa", "is"] },
+  { name: "Jeremiah", abbr: ["jer", "je", "jr"] },
+  { name: "Lamentations", abbr: ["lam", "la"] },
+  { name: "Ezekiel", abbr: ["ezek", "eze", "ez"] },
+  { name: "Daniel", abbr: ["dan", "da", "dn"] },
+  { name: "Hosea", abbr: ["hos", "ho"] },
+  { name: "Joel", abbr: ["joel", "jl"] },
+  { name: "Amos", abbr: ["amos", "am"] },
+  { name: "Obadiah", abbr: ["obad", "ob"] },
+  { name: "Jonah", abbr: ["jonah", "jon", "jh"] },
+  { name: "Micah", abbr: ["mic", "mi"] },
+  { name: "Nahum", abbr: ["nah", "na"] },
+  { name: "Habakkuk", abbr: ["hab", "hk"] },
+  { name: "Zephaniah", abbr: ["zeph", "zp"] },
+  { name: "Haggai", abbr: ["hag", "hg"] },
+  { name: "Zechariah", abbr: ["zech", "zc"] },
+  { name: "Malachi", abbr: ["mal", "ml"] },
+  { name: "Matthew", abbr: ["matt", "mt", "mat"] },
+  { name: "Mark", abbr: ["mark", "mk", "mrk"] },
+  { name: "Luke", abbr: ["luke", "lk", "luc"] },
+  { name: "John", abbr: ["john", "jn", "joh"] },
+  { name: "Acts", abbr: ["acts", "ac", "act"] },
+  { name: "Romans", abbr: ["rom", "ro", "rm"] },
+  { name: "1 Corinthians", abbr: ["1 cor", "1co", "1cor"] },
+  { name: "2 Corinthians", abbr: ["2 cor", "2co", "2cor"] },
+  { name: "Galatians", abbr: ["gal", "ga", "gl"] },
+  { name: "Ephesians", abbr: ["eph", "ep", "ephes"] },
+  { name: "Philippians", abbr: ["phil", "php", "phi"] },
+  { name: "Colossians", abbr: ["col", "co"] },
+  { name: "1 Thessalonians", abbr: ["1 thess", "1th", "1thess"] },
+  { name: "2 Thessalonians", abbr: ["2 thess", "2th", "2thess"] },
+  { name: "1 Timothy", abbr: ["1 tim", "1ti", "1tim"] },
+  { name: "2 Timothy", abbr: ["2 tim", "2ti", "2tim"] },
+  { name: "Titus", abbr: ["titus", "ti", "tit"] },
+  { name: "Philemon", abbr: ["phlm", "phm", "pm"] },
+  { name: "Hebrews", abbr: ["heb", "he"] },
+  { name: "James", abbr: ["jas", "ja", "jm"] },
+  { name: "1 Peter", abbr: ["1 pet", "1pe", "1pt"] },
+  { name: "2 Peter", abbr: ["2 pet", "2pe", "2pt"] },
+  { name: "1 John", abbr: ["1 john", "1jn", "1joh"] },
+  { name: "2 John", abbr: ["2 john", "2jn", "2joh"] },
+  { name: "3 John", abbr: ["3 john", "3jn", "3joh"] },
+  { name: "Jude", abbr: ["jude", "jud", "jd"] },
+  { name: "Revelation", abbr: ["rev", "re", "the revelation"] },
+];
+
+const POPULAR_VERSES = [
+  "John 3:16",
+  "Psalm 23:1",
+  "Romans 8:28",
+  "Philippians 4:13",
+  "Matthew 6:9",
+  "Genesis 1:1",
+  "Proverbs 3:5",
+  "Jeremiah 29:11",
+  "Isaiah 41:10",
+  "Matthew 28:19",
+];
+
+// Helpers
 function normalizeBaseUrl(url) {
   let trimmed = (url || "").trim().replace(/\/+$/, "");
   if (!trimmed) return "";
@@ -48,125 +132,41 @@ function formatReference({ book, chapter, verse }) {
   return `${book} ${chapter}:${verse}`;
 }
 
-function parsePartialQuery(input) {
-  const s = (input || "").trim();
-  if (!s) return { bookPart: "", chapter: null, verse: null };
-  const m = s.match(/^((?:\d\s*)?[a-zA-Z]+(?:\s+[a-zA-Z]+)?)(?:\s+(\d+))?(?:\s*:\s*(\d+)?)?$/i);
-  if (!m) return { bookPart: s, chapter: null, verse: null };
-  return {
-    bookPart: (m[1] || "").trim(),
-    chapter: m[2] ? parseInt(m[2], 10) : null,
-    verse: m[3] ? parseInt(m[3], 10) : null,
-  };
-}
+function getSuggestions(query) {
+  const q = (query || "").trim().toLowerCase();
+  if (!q) return [];
 
-function bookMatchesQuery(book, q) {
-  if (!q) return true;
-  const lower = q.toLowerCase();
-  const name = book.name.toLowerCase();
-  const abbr = (book.abbreviation || "").toLowerCase();
-  return (
-    name.includes(lower) ||
-    name.startsWith(lower) ||
-    abbr.startsWith(lower) ||
-    lower.startsWith(name.slice(0, Math.max(3, lower.length)))
-  );
-}
+  const out = [];
+  const parsed = parseReference(query);
 
-function resolveBook(bibleData, bookPart) {
-  if (!bibleData?.books?.length || !bookPart) return null;
-  const lower = bookPart.toLowerCase().trim();
-  let found = bibleData.books.find((b) => b.name.toLowerCase() === lower);
-  if (found) return found;
-  found = bibleData.books.find((b) => (b.abbreviation || "").toLowerCase() === lower);
-  if (found) return found;
-  const matches = bibleData.books.filter((b) => bookMatchesQuery(b, bookPart));
-  if (matches.length === 1) return matches[0];
-  if (matches.length > 1) {
-    const exactStart = matches.find((b) => b.name.toLowerCase().startsWith(lower));
-    return exactStart || matches[0];
-  }
-  return null;
-}
-
-function getGroupedSuggestions(query, bibleData) {
-  const books = [];
-  const chapters = [];
-  const verses = [];
-
-  if (!bibleData?.books?.length) {
-    return { books, chapters, verses };
-  }
-
-  const { bookPart, chapter, verse } = parsePartialQuery(query);
-  const q = bookPart.toLowerCase();
-
-  const matchedBooks = bibleData.books
-    .filter((b) => bookMatchesQuery(b, bookPart))
-    .slice(0, 20);
-
-  for (const b of matchedBooks) {
-    books.push({ type: "book", label: b.name, value: b.name });
-  }
-
-  const activeBook = resolveBook(bibleData, bookPart);
-
-  if (activeBook && activeBook.chapters) {
-    let chapterList = activeBook.chapters;
-    if (chapter !== null && !Number.isNaN(chapter)) {
-      chapterList = chapterList.filter((c) => {
-        const n = String(c.chapter);
-        return n.startsWith(String(chapter)) || c.chapter === chapter;
-      });
-      if (chapterList.length === 0) {
-        const ch = activeBook.chapters.find((c) => c.chapter === chapter);
-        if (ch) chapterList = [ch];
+  if (parsed) {
+    out.push(formatReference(parsed));
+    if (!parsed.endVerse) {
+      out.push(formatReference({ ...parsed, verse: parsed.verse + 1 }));
+      if (parsed.verse > 1) {
+        out.push(formatReference({ ...parsed, verse: parsed.verse - 1 }));
       }
     }
-    for (const c of chapterList.slice(0, 40)) {
-      chapters.push({
-        type: "chapter",
-        label: `${activeBook.name} ${c.chapter}`,
-        value: `${activeBook.name} ${c.chapter}`,
-        book: activeBook.name,
-        chapter: c.chapter,
-        verseCount: c.verses,
-      });
-    }
+    return [...new Set(out)].slice(0, 8);
+  }
 
-    if (chapter !== null && !Number.isNaN(chapter)) {
-      const chData = activeBook.chapters.find((c) => c.chapter === chapter);
-      const verseCount = chData ? chData.verses : 0;
-      if (verseCount > 0) {
-        let start = 1;
-        let end = verseCount;
-        if (verse !== null && !Number.isNaN(verse)) {
-          start = Math.max(1, verse);
-          end = Math.min(verseCount, verse + 15);
-        } else {
-          end = Math.min(verseCount, 30);
-        }
-        for (let v = start; v <= end; v += 1) {
-          verses.push({
-            type: "verse",
-            label: `${activeBook.name} ${chapter}:${v}`,
-            value: `${activeBook.name} ${chapter}:${v}`,
-          });
-        }
-        if (verseCount > end) {
-          verses.push({
-            type: "verse",
-            label: `${activeBook.name} ${chapter}:${end + 1} … ${verseCount}`,
-            value: `${activeBook.name} ${chapter}:${end + 1}`,
-          });
-        }
-      }
+  // Match against all 66 books
+  for (const b of BIBLE_BOOKS) {
+    const name = b.name.toLowerCase();
+    if (name.startsWith(q) || b.abbr.some((a) => a.startsWith(q) || q.startsWith(a))) {
+      out.push(`${b.name} 1:1`);
+      out.push(`${b.name} 3:16`);
     }
   }
 
-  return { books, chapters, verses };
+  for (const p of POPULAR_VERSES) {
+    if (p.toLowerCase().includes(q)) out.push(p);
+  }
+
+  return [...new Set(out)].slice(0, 8);
 }
 
+// Cleaned up HTML Generator (Reduced font size)
 function buildPreviewHtml({ baseUrl, docType, page, totalPages, slideImages }) {
   const safeBase = JSON.stringify(baseUrl);
   const safeType = JSON.stringify(docType || "");
@@ -183,7 +183,8 @@ function buildPreviewHtml({ baseUrl, docType, page, totalPages, slideImages }) {
     #wrap { width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
     canvas, img, video { max-width:100%; max-height:100%; object-fit:contain; }
     #label { position:fixed; bottom:8px; right:12px; color:#94a3b8; font:14px sans-serif; }
-    #text { color:#e2e8f0; font:18px sans-serif; text-align:center; padding:16px; }
+    /* Reduced font size from 18px to 16px */
+    #text { color:#e2e8f0; font:16px sans-serif; text-align:center; padding:16px; }
   </style>
 </head>
 <body>
@@ -191,16 +192,12 @@ function buildPreviewHtml({ baseUrl, docType, page, totalPages, slideImages }) {
     <canvas id="c" style="display:none"></canvas>
     <img id="img" style="display:none" />
     <video id="vid" style="display:none" controls playsinline></video>
-    <motion-disabled>
-    <motion-disabled>
-    <motion-disabled>
     <div id="text" style="display:none"></div>
   </div>
   <div id="label"></div>
   <script type="module">
     import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs";
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
 
     const baseUrl = ${safeBase};
     const docType = ${safeType};
@@ -272,6 +269,8 @@ export default function App() {
   const [serverUrl, setServerUrl] = useState("");
   const [phoneIp, setPhoneIp] = useState("");
   const [connected, setConnected] = useState(false);
+
+  // Presentation State
   const [uploading, setUploading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
@@ -280,20 +279,16 @@ export default function App() {
   const [slideImages, setSlideImages] = useState([]);
   const [castUrl, setCastUrl] = useState("");
 
+  // Bible State (Bilingual)
   const [screen, setScreen] = useState("present");
   const [verseQuery, setVerseQuery] = useState("");
-  const [bibleData, setBibleData] = useState(null);
-  const [groupedSuggestions, setGroupedSuggestions] = useState({
-    books: [],
-    chapters: [],
-    verses: [],
-  });
+  const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [themes, setThemes] = useState([]);
   const [selectedTheme, setSelectedTheme] = useState("nature-1");
   const [loadingVerse, setLoadingVerse] = useState(false);
   const [currentRef, setCurrentRef] = useState(null);
-  const [versePreview, setVersePreview] = useState(null);
+  const [versePreview, setVersePreview] = useState({ en: "", hi: "", reference: "" });
   const [chapterVerseCount, setChapterVerseCount] = useState(0);
 
   const previewHtml = useMemo(
@@ -310,11 +305,11 @@ export default function App() {
 
   useEffect(() => {
     if (!showSuggestions) {
-      setGroupedSuggestions({ books: [], chapters: [], verses: [] });
+      setSuggestions([]);
       return;
     }
-    setGroupedSuggestions(getGroupedSuggestions(verseQuery, bibleData));
-  }, [verseQuery, showSuggestions, bibleData]);
+    setSuggestions(getSuggestions(verseQuery));
+  }, [verseQuery, showSuggestions]);
 
   const connectSocket = useCallback((base) => {
     if (socketRef.current) {
@@ -360,49 +355,33 @@ export default function App() {
     });
   }, []);
 
-  const loadBibleBooks = useCallback(async (base) => {
+  const refreshServerInfo = useCallback(async (base) => {
     try {
-      const res = await fetch(`${base}/api/bible/books`);
-      if (!res.ok) return;
-      const data = await res.json();
-      const books = Array.isArray(data) ? data : data.books || [];
-      setBibleData({ books });
+      const res = await fetch(`${base}/api/info`);
+      const json = await res.json();
+      if (json.displayUrl) setCastUrl(json.displayUrl);
     } catch (_e) {
-      setBibleData(null);
+      setCastUrl(`${base}`);
     }
-  }, []);
-
-  const refreshServerInfo = useCallback(
-    async (base) => {
-      try {
-        const res = await fetch(`${base}/api/info`);
-        const json = await res.json();
-        if (json.displayUrl) setCastUrl(json.displayUrl);
-      } catch (_e) {
-        setCastUrl(`${base}`);
-      }
-      try {
-        const themesRes = await fetch(`${base}/api/themes`);
-        if (themesRes.ok) {
-          const themesJson = await themesRes.json();
-          const list = themesJson.themes || [];
-          setThemes(list);
-          if (list.length > 0) setSelectedTheme(list[0].id);
-        } else {
-          setThemes([]);
-        }
-      } catch (_e) {
+    try {
+      const themesRes = await fetch(`${base}/api/themes`);
+      if (themesRes.ok) {
+        const themesJson = await themesRes.json();
+        const list = themesJson.themes || [];
+        setThemes(list);
+        if (list.length > 0) setSelectedTheme(list[0].id);
+      } else {
         setThemes([]);
       }
-      await loadBibleBooks(base);
-    },
-    [loadBibleBooks]
-  );
+    } catch (_e) {
+      setThemes([]);
+    }
+  }, []);
 
   const saveAndConnect = useCallback(async () => {
     const base = normalizeBaseUrl(serverInput);
     if (!base) {
-      Alert.alert("Server URL required", "Example: https://cast-presenter.onrender.com");
+      Alert.alert("Server URL required", "Example: http://192.168.1.5:3000");
       return;
     }
     await AsyncStorage.setItem(STORAGE_KEY, base);
@@ -443,11 +422,6 @@ export default function App() {
 
   const fetchChapterVerseCount = useCallback(
     async (book, chapter) => {
-      const resolved = resolveBook(bibleData, book);
-      if (resolved?.chapters) {
-        const ch = resolved.chapters.find((c) => c.chapter === chapter);
-        if (ch?.verses) return ch.verses;
-      }
       try {
         const ref = encodeURIComponent(`${book} ${chapter}`);
         const res = await fetch(`${serverUrl}/api/bible/chapter/${ref}`);
@@ -458,7 +432,7 @@ export default function App() {
         return 0;
       }
     },
-    [serverUrl, bibleData]
+    [serverUrl]
   );
 
   const emitVerseToTv = useCallback(
@@ -466,9 +440,11 @@ export default function App() {
       if (!socketRef.current || !connected || !preview) return;
       const theme = themes.find((t) => t.id === selectedTheme) || themes[0];
       const bgPath = theme?.image || "/backgrounds/nature-1.jpg";
+
       socketRef.current.emit("show-verse", {
         reference: preview.reference,
-        text: preview.text,
+        enText: preview.en,
+        hiText: preview.hi,
         theme: selectedTheme,
         backgroundUrl: `${serverUrl}${bgPath}`,
       });
@@ -489,7 +465,7 @@ export default function App() {
       setLoadingVerse(true);
       try {
         const ref = encodeURIComponent(q);
-        const res = await fetch(`${serverUrl}/api/bible/${ref}`);
+        const res = await fetch(`${serverUrl}/api/bible/bilingual/${ref}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || "Verse not found");
 
@@ -500,9 +476,16 @@ export default function App() {
           setChapterVerseCount(count);
         }
 
+        // Hide Hindi text if it contains "not available" error message
+        let hiText = json.hiText || "";
+        if (hiText.toLowerCase().includes("not available")) {
+          hiText = "";
+        }
+
         const preview = {
           reference: json.reference || q,
-          text: (json.text || "").trim(),
+          en: json.enText || "",
+          hi: hiText,
         };
         setVersePreview(preview);
         setVerseQuery(json.reference || q);
@@ -519,21 +502,11 @@ export default function App() {
     [serverUrl, verseQuery, fetchChapterVerseCount, emitVerseToTv]
   );
 
-  const selectPickerItem = useCallback(
-    (item) => {
-      if (item.type === "book") {
-        setVerseQuery(`${item.label} `);
-        setShowSuggestions(true);
-        return;
-      }
-      if (item.type === "chapter") {
-        setVerseQuery(`${item.label}:`);
-        setShowSuggestions(true);
-        return;
-      }
+  const selectSuggestion = useCallback(
+    (text) => {
       setShowSuggestions(false);
-      setVerseQuery(item.label);
-      loadVerse(item.label, { showOnTv: false });
+      setVerseQuery(text);
+      loadVerse(text, { showOnTv: false });
     },
     [loadVerse]
   );
@@ -576,7 +549,7 @@ export default function App() {
     let { book, chapter, verse } = currentRef;
     if (verse <= 1) {
       if (chapter <= 1) {
-        Alert.alert("Bible", "Already at the of this book.");
+        Alert.alert("Bible", "Already at the start.");
         return;
       }
       chapter -= 1;
@@ -591,7 +564,7 @@ export default function App() {
 
   const pickDocument = useCallback(async () => {
     if (!serverUrl) {
-      Alert.alert("Connect first", "Enter your cast server URL and tap Connect.");
+      Alert.alert("Connect first", "Enter cast server URL.");
       return;
     }
     try {
@@ -678,30 +651,7 @@ export default function App() {
     sendPageUpdate(currentPage + 1);
   };
 
-  const hasSuggestions =
-    groupedSuggestions.books.length > 0 ||
-    groupedSuggestions.chapters.length > 0 ||
-    groupedSuggestions.verses.length > 0;
-
   const topCastLine = castUrl || (serverUrl ? serverUrl : `http://${phoneIp}:3000`);
-
-  const renderSuggestSection = (title, items) => {
-    if (!items.length) return null;
-    return (
-      <View style={styles.suggestSection}>
-        <Text style={styles.suggestSectionTitle}>{title}</Text>
-        {items.map((item) => (
-          <TouchableOpacity
-            key={`${item.type}-${item.label}`}
-            style={styles.suggestItem}
-            onPress={() => selectPickerItem(item)}
-          >
-            <Text style={styles.suggestText}>{item.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    );
-  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -714,7 +664,6 @@ export default function App() {
           </Text>
           <Text style={styles.topHint}>
             Phone IP: {phoneIp} · Connection: {connected ? "Connected" : "Disconnected"}
-            {bibleData?.books?.length ? ` · ${bibleData.books.length} books` : ""}
           </Text>
         </View>
 
@@ -722,7 +671,7 @@ export default function App() {
           <Text style={styles.label}>Cast server URL</Text>
           <TextInput
             style={styles.input}
-            placeholder="https://cast-presenter.onrender.com"
+            placeholder="http://192.168.1.x:3000"
             placeholderTextColor="#64748b"
             autoCapitalize="none"
             value={serverInput}
@@ -810,38 +759,45 @@ export default function App() {
 
         {screen === "bible" && (
           <View style={styles.card}>
-            <Text style={styles.label}>Search: Book → Chapter → Verse</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Type book, e.g. John or John 3:16"
-              placeholderTextColor="#64748b"
-              value={verseQuery}
-              onChangeText={(text) => {
-                setVerseQuery(text);
-                setShowSuggestions(true);
-              }}
-              onFocus={() => setShowSuggestions(true)}
-              autoCapitalize="words"
-              onSubmitEditing={() => {
-                setShowSuggestions(false);
-                loadVerse(verseQuery, { showOnTv: false });
-              }}
-            />
-
-            {showSuggestions && verseQuery.trim().length > 0 && (
-              <ScrollView style={styles.suggestBox} nestedScrollEnabled keyboardShouldPersistTaps="handled">
-                {!bibleData?.books?.length ? (
-                  <Text style={styles.suggestHint}>Tap Connect to load all Bible books.</Text>
-                ) : !hasSuggestions ? (
-                  <Text style={styles.suggestHint}>No matches. Try another book name.</Text>
-                ) : (
-                  <>
-                    {renderSuggestSection("Books", groupedSuggestions.books)}
-                    {renderSuggestSection("Chapters", groupedSuggestions.chapters)}
-                    {renderSuggestSection("Verses", groupedSuggestions.verses)}
-                  </>
+            <Text style={styles.label}>Search Verse</Text>
+            <View style={styles.searchRow}>
+                <TextInput
+                style={styles.searchInput}
+                placeholder="e.g. Jer 29:11"
+                placeholderTextColor="#64748b"
+                value={verseQuery}
+                onChangeText={(text) => {
+                    setVerseQuery(text);
+                    setShowSuggestions(true);
+                }}
+                onFocus={() => setShowSuggestions(true)}
+                autoCapitalize="words"
+                onSubmitEditing={() => {
+                    setShowSuggestions(false);
+                    loadVerse(verseQuery, { showOnTv: false });
+                }}
+                />
+                {verseQuery.length > 0 && (
+                    <TouchableOpacity style={styles.clearBtn} onPress={() => { setVerseQuery(''); setShowSuggestions(false); }}>
+                        <Text style={styles.clearBtnText}>✕</Text>
+                    </TouchableOpacity>
                 )}
-              </ScrollView>
+            </View>
+
+            {showSuggestions && suggestions.length > 0 && verseQuery.trim().length > 0 && (
+              <View style={styles.suggestBox}>
+                <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled={true}>
+                    {suggestions.map((s) => (
+                    <TouchableOpacity
+                        key={s}
+                        style={styles.suggestItem}
+                        onPress={() => selectSuggestion(s)}
+                    >
+                        <Text style={styles.suggestText}>{s}</Text>
+                    </TouchableOpacity>
+                    ))}
+                </ScrollView>
+              </View>
             )}
 
             <TouchableOpacity
@@ -855,23 +811,38 @@ export default function App() {
               <Text style={styles.secondaryBtnText}>Load preview</Text>
             </TouchableOpacity>
 
-            {versePreview && (
+            {versePreview.reference && (
               <View style={styles.versePreviewBox}>
                 <Text style={styles.versePreviewRef}>{versePreview.reference}</Text>
-                <Text style={styles.versePreviewText}>{versePreview.text}</Text>
+
+                {versePreview.hi && (
+                    <View style={styles.hindiContainer}>
+                        <Text style={[styles.versePreviewText, styles.hindiText]}>{versePreview.hi}</Text>
+                        <Text style={styles.dividerLine} />
+                    </View>
+                )}
+
+                <Text style={styles.versePreviewText}>{versePreview.en}</Text>
               </View>
             )}
 
-            <Text style={[styles.label, { marginTop: 8 }]}>Background</Text>
+            <Text style={[styles.label, { marginTop: 12 }]}>Background Theme</Text>
             {themes.length === 0 ? (
-              <Text style={styles.themeHint}>Connect to load themes from server.</Text>
+              <Text style={styles.themeHint}>Connect to load themes.</Text>
             ) : (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.themeScroll}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.themeScroll}
+              >
                 {themes.map((t) => (
                   <TouchableOpacity
                     key={t.id}
                     onPress={() => setSelectedTheme(t.id)}
-                    style={[styles.themeChip, selectedTheme === t.id && styles.themeChipActive]}
+                    style={[
+                      styles.themeChip,
+                      selectedTheme === t.id && styles.themeChipActive,
+                    ]}
                   >
                     <Text style={styles.themeChipText}>{t.label || t.id}</Text>
                   </TouchableOpacity>
@@ -927,16 +898,16 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
   },
-  topTitle: { color: "#94a3b8", fontSize: 14, marginBottom: 6 },
-  topUrl: { color: "#38bdf8", fontSize: 18, fontWeight: "700" },
-  topHint: { color: "#64748b", fontSize: 12, marginTop: 8 },
+  topTitle: { color: "#94a3b8", fontSize: 13, marginBottom: 6 },
+  topUrl: { color: "#38bdf8", fontSize: 16, fontWeight: "700" },
+  topHint: { color: "#64748b", fontSize: 11, marginTop: 8 },
   card: {
     backgroundColor: "#1e293b",
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
   },
-  label: { color: "#cbd5e1", marginBottom: 8, fontSize: 14 },
+  label: { color: "#cbd5e1", marginBottom: 8, fontSize: 14, fontWeight: "600" },
   input: {
     backgroundColor: "#0f172a",
     color: "#f8fafc",
@@ -946,24 +917,51 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#334155",
     marginBottom: 12,
+    fontSize: 15,
+  },
+  searchRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 12,
+  },
+  searchInput: {
+      flex: 1,
+      backgroundColor: "#0f172a",
+      color: "#f8fafc",
+      borderRadius: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      borderWidth: 1,
+      borderColor: "#38bdf8",
+      fontSize: 15,
+      marginRight: 8,
+  },
+  clearBtn: {
+      padding: 10,
+      justifyContent: 'center',
+  },
+  clearBtnText: {
+      color: "#94a3b8",
+      fontSize: 18,
+      fontWeight: 'bold',
   },
   primaryBtn: {
     backgroundColor: "#2563eb",
     borderRadius: 12,
-    paddingVertical: 16,
+    paddingVertical: 14,
     alignItems: "center",
     marginBottom: 12,
   },
-  primaryBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  primaryBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
   secondaryBtn: {
     backgroundColor: "#334155",
     borderRadius: 8,
-    paddingVertical: 12,
+    paddingVertical: 11,
     alignItems: "center",
   },
-  secondaryBtnText: { color: "#f8fafc", fontWeight: "600" },
+  secondaryBtnText: { color: "#f8fafc", fontWeight: "600", fontSize: 14 },
   disabled: { opacity: 0.45 },
-  fileName: { color: "#e2e8f0", marginBottom: 12, fontSize: 14 },
+  fileName: { color: "#e2e8f0", marginBottom: 12, fontSize: 13 },
   previewBox: {
     height: 220,
     backgroundColor: "#020617",
@@ -978,6 +976,7 @@ const styles = StyleSheet.create({
     color: "#64748b",
     textAlign: "center",
     marginTop: 90,
+    fontSize: 14,
   },
   controls: {
     flexDirection: "row",
@@ -990,67 +989,63 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#16a34a",
     borderRadius: 12,
-    paddingVertical: 20,
+    paddingVertical: 18,
     alignItems: "center",
   },
-  navBtnText: { color: "#fff", fontSize: 16, fontWeight: "800" },
+  navBtnText: { color: "#fff", fontSize: 14, fontWeight: "800" },
   pageIndicator: {
     color: "#f8fafc",
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "700",
     minWidth: 72,
     textAlign: "center",
   },
-  tabRow: { flexDirection: "row", marginBottom: 16, gap: 8 },
+  tabRow: {
+    flexDirection: "row",
+    marginBottom: 16,
+    gap: 8,
+  },
   tabBtn: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 11,
     borderRadius: 8,
     backgroundColor: "#334155",
     alignItems: "center",
   },
   tabBtnActive: { backgroundColor: "#2563eb" },
-  tabBtnText: { color: "#fff", fontWeight: "700" },
+  tabBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
   themeScroll: { marginBottom: 12, maxHeight: 48 },
   themeChip: {
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 9,
     borderRadius: 20,
     backgroundColor: "#334155",
     marginRight: 8,
     alignSelf: "flex-start",
   },
   themeChipActive: { backgroundColor: "#2563eb" },
-  themeChipText: { color: "#fff", fontWeight: "600" },
-  themeHint: { color: "#94a3b8", fontSize: 13, marginBottom: 12 },
+  themeChipText: { color: "#fff", fontWeight: "600", fontSize: 13 },
+  themeHint: { color: "#94a3b8", fontSize: 12, marginBottom: 12 },
   suggestBox: {
-    backgroundColor: "#0f172a",
+    backgroundColor: "#1e293b",
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: "#38bdf8",
     marginBottom: 12,
-    maxHeight: 280,
-  },
-  suggestSection: { paddingBottom: 4 },
-  suggestSectionTitle: {
-    color: "#38bdf8",
-    fontSize: 12,
-    fontWeight: "800",
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 4,
-    letterSpacing: 1,
-  },
-  suggestHint: {
-    color: "#94a3b8",
-    fontSize: 14,
-    padding: 12,
+    maxHeight: 200,
+    zIndex: 10,
+    elevation: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
   suggestItem: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#1e293b",
+    borderBottomColor: "#334155",
+    justifyContent: 'center',
   },
   suggestText: { color: "#e2e8f0", fontSize: 15 },
   versePreviewBox: {
@@ -1060,17 +1055,46 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: "#334155",
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+    minHeight: 150,
+    flexShrink: 1,
   },
   versePreviewRef: {
-    color: "#38bdf8",
-    fontSize: 16,
-    fontWeight: "700",
-    marginBottom: 8,
+    color: "#facc15",
+    fontSize: 18,
+    fontWeight: "800",
+    marginBottom: 12,
+    textAlign: "center",
+    width: "100%",
+    letterSpacing: 1,
+    textTransform: "uppercase",
   },
   versePreviewText: {
     color: "#f1f5f9",
     fontSize: 16,
     lineHeight: 24,
     fontFamily: Platform.OS === "ios" ? "Georgia" : "serif",
+    textAlign: "justify",
+    width: "100%",
+    flexShrink: 1,
+  },
+  hindiContainer: {
+      marginTop: 0,
+      width: '100%',
+      alignItems: 'center',
+      marginBottom: 12,
+  },
+  dividerLine: {
+      height: 1,
+      width: '50%',
+      backgroundColor: '#334155',
+      marginTop: 12,
+  },
+  hindiText: {
+      fontFamily: Platform.OS === 'ios' ? 'Devanagari Sangam MN' : 'serif',
+      color: '#cbd5e1',
+      fontStyle: 'italic',
+      fontSize: 15,
   },
 });

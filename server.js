@@ -98,7 +98,7 @@ async function fetchBilingualBible(ref) {
   ]);
 
   if (!enRes.ok) throw new Error("Verse not found (English lookup failed)");
-  
+
   const enData = await enRes.json();
   let hiText = "";
 
@@ -106,9 +106,6 @@ async function fetchBilingualBible(ref) {
   if (hiRes.ok) {
     const hiData = await hiRes.json();
     hiText = hiData.text || "";
-  } else {
-    console.warn(`Hindi translation not found for ${clean}, using fallback.`);
-    hiText = "Hindi translation not available for this verse."; // Or use a blank string
   }
 
   return {
@@ -239,7 +236,7 @@ app.get("/api/bible/bilingual/:ref(*)", async (req, res) => {
 });
 
 app.get("/api/bible/:ref(*)", async (req, res) => {
-  // Kept for backwards compatibility, though Mobile App will now use /bilingual
+  // Kept for backwards compatibility
   try {
     const clean = normalizeBibleRef(req.params.ref);
     const response = await fetch(`https://bible-api.com/${encodeURIComponent(clean)}?translation=kjv`);
@@ -343,7 +340,6 @@ io.on("connection", (socket) => {
   });
 
   socket.on("show-verse", (data) => {
-    // Data now expected to contain: reference, enText, hiText, theme, backgroundUrl
     const backgroundUrl = data?.backgroundUrl || "/backgrounds/nature-1.jpg";
     io.emit("show-verse", {
       reference: data?.reference || "",

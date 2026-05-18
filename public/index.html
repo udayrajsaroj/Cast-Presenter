@@ -61,7 +61,7 @@
       inset: 0;
       overflow: hidden;
       z-index: 20;
-      display: none; 
+      display: none;
     }
     #verseBg {
       position: absolute;
@@ -73,7 +73,7 @@
     #verseOverlay {
       position: absolute;
       inset: 0;
-      background: rgba(0, 0, 0, 0.4); 
+      background: rgba(0, 0, 0, 0.4);
     }
     #verseContent {
       position: relative;
@@ -92,9 +92,9 @@
       align-items: center;
       justify-content: center;
       padding: 1vh 2vw;
-      overflow: hidden; 
+      overflow: hidden;
+      word-wrap: break-word;
       word-break: break-word;
-      white-space: pre-wrap;
     }
 
     #verseRefSection {
@@ -103,28 +103,26 @@
       font-weight: 800;
       text-transform: uppercase;
       letter-spacing: 1px;
-      color: #ffeb3b; 
+      color: #ffeb3b;
       text-shadow: 0 2px 4px rgba(0,0,0,0.8);
     }
     #verseRef {
       font-size: clamp(1.5rem, 3vw, 3rem);
     }
 
-    /* --- ORDER SWAPPED: Hindi is now here (Top) --- */
     #verseHiSection {
-      flex: 1; 
+      flex: 1;
       font-family: 'Noto Sans Devanagari', 'Mangal', sans-serif;
       font-weight: 500;
-      color: #e0f2f1; 
+      color: #e0f2f1;
     }
     #verseHiText {
       font-size: clamp(1.5rem, 3.5vw, 5rem);
       line-height: 1.4;
     }
 
-    /* --- ORDER SWAPPED: English is now here (Bottom) --- */
     #verseEnSection {
-      flex: 1; 
+      flex: 1;
       font-family: 'Georgia', 'Times New Roman', serif;
       font-style: italic;
     }
@@ -132,7 +130,6 @@
       font-size: clamp(1.5rem, 3.5vw, 5rem);
       line-height: 1.2;
     }
-
   </style>
   <script src="/socket.io/socket.io.js"></script>
 </head>
@@ -159,12 +156,12 @@
       <div id="verseRefSection" class="verse-section">
         <span id="verseRef">JOHN 3:16</span>
       </div>
-      
+
       <!-- HINDI FIRST -->
       <div id="verseHiSection" class="verse-section">
         <div id="verseHiText">क्योंकि परमेश्वर ने इतना जगत से प्रेम किया...</div>
       </div>
-      
+
       <!-- ENGLISH SECOND -->
       <div id="verseEnSection" class="verse-section">
         <div id="verseEnText">For God so loved the world...</div>
@@ -233,23 +230,21 @@
 
       const bg = resolveUrl(payload.backgroundUrl || "/backgrounds/nature-1.jpg");
       verseBg.style.backgroundImage = `url('${bg}')`;
-      
+
       verseRef.textContent = payload.reference || "";
       verseEnText.textContent = payload.enText || "";
       verseHiText.textContent = payload.hiText || "";
-      
-      // Handle Visibility based on swapped order
+
       const hasHindi = payload.hiText && payload.hiText.length > 0;
-      
+
       if (hasHindi) {
         verseHiSection.style.display = 'flex';
-        verseEnSection.style.flex = '1'; 
+        verseEnSection.style.flex = '1';
       } else {
-        // If no Hindi, hide Hindi section and expand English to take its spot
         verseHiSection.style.display = 'none';
-        verseEnSection.style.flex = '2'; 
+        verseEnSection.style.flex = '2';
       }
-      
+
       verseStage.style.display = "block";
     }
 
@@ -264,21 +259,21 @@
       const page = await pdfDoc.getPage(pageNumber);
       const base = page.getViewport({ scale: 1 });
       const scale = Math.min(
-        window.innerWidth / base.width, 
+        window.innerWidth / base.width,
         window.innerHeight / base.height
       ) * window.devicePixelRatio;
       const viewport = page.getViewport({ scale });
-      
+
       pdfCanvas.width = viewport.width;
       pdfCanvas.height = viewport.height;
       pdfCanvas.style.width = `${viewport.width / window.devicePixelRatio}px`;
       pdfCanvas.style.height = `${viewport.height / window.devicePixelRatio}px`;
-      
+
       const ctx = pdfCanvas.getContext("2d");
       if (renderTask) { try { renderTask.cancel(); } catch (_e) {} }
       renderTask = page.render({ canvasContext: ctx, viewport });
       await renderTask.promise;
-      
+
       hideAll();
       pdfCanvas.style.display = "block";
     }
