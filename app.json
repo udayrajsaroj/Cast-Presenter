@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "Cast Presenter",
+    "slug": "cast-presenter",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Connect to the local cast server on your Wi-Fi network."
+      }
+    },
+    "android": {
+        "usesCleartextTraffic": true,
+      "adaptiveIcon": {
+        "backgroundColor": "#0f172a"
+      }
+    },
+    "plugins": [
+      "expo-document-picker",
+      "expo-asset",
+      "expo-font"
+    ]
+  }
+}

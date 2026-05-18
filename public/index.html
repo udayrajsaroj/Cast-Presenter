@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cast Display</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      color: #fff;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+    #stage {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+    }
+    #pdfCanvas, #slideImage {
+      max-width: 100vw;
+      max-height: 100vh;
+      object-fit: contain;
+      display: none;
+    }
+    #placeholder {
+      display: none;
+      width: 90vw;
+      max-width: 1200px;
+      text-align: center;
+      padding: 48px;
+    }
+    #placeholder h1 {
+      font-size: clamp(32px, 6vw, 72px);
+      margin-bottom: 24px;
+    }
+    #placeholder p {
+      font-size: clamp(18px, 3vw, 32px);
+      line-height: 1.5;
+      opacity: 0.9;
+      word-break: break-word;
+    }
+    #waiting {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(20px, 3vw, 36px);
+      opacity: 0.75;
+      text-align: center;
+      padding: 24px;
+    }
+  </style>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <div id="waiting">Waiting for presenter…</div>
+  <div id="stage">
+    <canvas id="pdfCanvas"></canvas>
+    <img id="slideImage" alt="" />
+    <div id="placeholder">
+      <h1 id="slideNumber"></h1>
+      <p id="slideText"></p>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs";
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
+
+    const waitingEl = document.getElementById("waiting");
+    const pdfCanvas = document.getElementById("pdfCanvas");
+    const slideImage = document.getElementById("slideImage");
+    const placeholderEl = document.getElementById("placeholder");
+    const slideNumberEl = document.getElementById("slideNumber");
+    const slideTextEl = document.getElementById("slideText");
+
+    let pdfDoc = null;
+    let renderTask = null;
+    const state = {
+      type: null,
+      totalPages: 0,
+      currentPage: 1,
+      slideImages: [],
+      documentUrl: null,
+    };
+
+    const socket = io({ transports: ["websocket", "polling"], reconnection: true });
+
+    function hideAll() {
+      pdfCanvas.style.display = "none";
+      slideImage.style.display = "none";
+      placeholderEl.style.display = "none";
+    }
+
+    async function renderPdfPage(pageNumber) {
+      const page = await pdfDoc.getPage(pageNumber);
+      const base = page.getViewport({ scale: 1 });
+      const scale =
+        Math.min(window.innerWidth / base.width, window.innerHeight / base.height) *
+        window.devicePixelRatio;
+      const viewport = page.getViewport({ scale });
+      pdfCanvas.width = viewport.width;
+      pdfCanvas.height = viewport.height;
+      pdfCanvas.style.width = `${viewport.width / window.devicePixelRatio}px`;
+      pdfCanvas.style.height = `${viewport.height / window.devicePixelRatio}px`;
+      const ctx = pdfCanvas.getContext("2d");
+      if (renderTask) {
+        try {
+          renderTask.cancel();
+        } catch (_e) {
+          /* ignore */
+        }
+      }
+      renderTask = page.render({ canvasContext: ctx, viewport });
+      await renderTask.promise;
+      hideAll();
+      pdfCanvas.style.display = "block";
+    }
+
+    async function loadPdf(url) {
+      pdfDoc = await pdfjsLib.getDocument(url).promise;
+    }
+
+    function renderPptxSlide(pageNumber) {
+      const slide = state.slideImages[pageNumber - 1];
+      hideAll();
+      waitingEl.style.display = "none";
+      if (!slide) {
+        placeholderEl.style.display = "block";
+        slideNumberEl.textContent = `Slide ${pageNumber}`;
+        slideTextEl.textContent = "";
+        return;
+      }
+      if (slide.images && slide.images.length > 0) {
+        slideImage.src = slide.images[0];
+        slideImage.style.display = "block";
+        return;
+      }
+      placeholderEl.style.display = "block";
+      slideNumberEl.textContent = `Slide ${slide.index || pageNumber}`;
+      slideTextEl.textContent = slide.placeholder || "";
+    }
+
+    async function renderCurrent() {
+      if (!state.type || state.totalPages < 1) {
+        hideAll();
+        waitingEl.style.display = "flex";
+        waitingEl.textContent = "Waiting for document…";
+        return;
+      }
+      waitingEl.style.display = "none";
+      if (state.type === "pdf") {
+        if (!pdfDoc && state.documentUrl) {
+          await loadPdf(state.documentUrl);
+        }
+        await renderPdfPage(state.currentPage);
+        return;
+      }
+      if (state.type === "pptx") {
+        renderPptxSlide(state.currentPage);
+      }
+    }
+
+    async function applyPayload(payload, reloadPdf) {
+      state.type = payload.type;
+      state.totalPages = payload.totalPages || 0;
+      state.currentPage = payload.currentPage || payload.page || 1;
+      state.slideImages = payload.slideImages || [];
+      if (payload.documentUrl) {
+        state.documentUrl = `${payload.documentUrl}?t=${Date.now()}`;
+      }
+      if (reloadPdf) {
+        pdfDoc = null;
+      }
+      if (state.type === "pdf" && state.documentUrl && reloadPdf) {
+        await loadPdf(state.documentUrl);
+      }
+      await renderCurrent();
+    }
+
+    socket.on("connect", () => {
+      socket.emit("join-room", { role: "viewer" }, async (ack) => {
+        if (!ack) return;
+        await applyPayload(
+          {
+            type: ack.type,
+            totalPages: ack.totalPages,
+            currentPage: ack.currentPage,
+            slideImages: ack.slideImages,
+            documentUrl: ack.documentUrl,
+          },
+          true
+        );
+      });
+    });
+
+    socket.on("upload-document", (payload) => {
+      applyPayload(
+        {
+          type: payload.type,
+          totalPages: payload.totalPages,
+          currentPage: payload.currentPage || 1,
+          slideImages: payload.slideImages,
+          documentUrl: payload.documentUrl,
+        },
+        true
+      ).catch(() => {});
+    });
+
+    socket.on("change-page", (payload) => {
+      applyPayload(
+        {
+          type: payload.type,
+          totalPages: payload.totalPages,
+          currentPage: payload.page,
+          slideImages: payload.slideImages,
+          documentUrl: payload.documentUrl,
+        },
+        false
+      ).catch(() => {});
+    });
+
+    socket.on("disconnect", () => {
+      waitingEl.style.display = "flex";
+      waitingEl.textContent = "Reconnecting…";
+    });
+
+    window.addEventListener("resize", () => {
+      renderCurrent().catch(() => {});
+    });
+  </script>
+</body>
+</html>
