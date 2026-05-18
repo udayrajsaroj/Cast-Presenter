@@ -16,15 +16,21 @@
       }
     },
     "android": {
-        "usesCleartextTraffic": true,
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#0f172a"
-      }
+      },
+      "package": "com.udayraj_saroj.castpresenter"
     },
     "plugins": [
       "expo-document-picker",
       "expo-asset",
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "570b9155-f9f7-4bf0-9fc8-797d3d1654a2"
+      }
+    }
   }
 }

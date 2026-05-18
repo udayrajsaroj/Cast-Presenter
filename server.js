@@ -18,6 +18,10 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 
 const app = express();
 const server = http.createServer(app);
+
+server.timeout = 300000;
+server.keepAliveTimeout = 300000;
+
 const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] },
 });
@@ -46,6 +50,13 @@ let presentation = {
   slideImages: [],
 };
 
+const BIBLE_THEMES = [
+  { id: "nature-1", label: "Nature", image: "/backgrounds/nature-1.jpg" },
+  { id: "sky-1", label: "Sky", image: "/backgrounds/sky-1.jpg" },
+  { id: "forest-1", label: "Forest", image: "/backgrounds/forest-1.jpg" },
+  { id: "clouds-1", label: "Clouds", image: "/backgrounds/clouds-1.jpg" },
+];
+
 function getLanIp() {
   const nets = os.networkInterfaces();
   for (const name of Object.keys(nets)) {
@@ -56,6 +67,33 @@ function getLanIp() {
     }
   }
   return "127.0.0.1";
+}
+
+function normalizeBibleRef(raw) {
+  try {
+    return decodeURIComponent(String(raw || "")).trim().replace(/\s+/g, " ");
+  } catch (_e) {
+    return String(raw || "").trim().replace(/\s+/g, " ");
+  }
+}
+
+function bibleApiUrl(ref) {
+  const clean = normalizeBibleRef(ref);
+  return `https://bible-api.com/${encodeURIComponent(clean)}`;
+}
+
+async function fetchBible(ref) {
+  const clean = normalizeBibleRef(ref);
+  if (!clean) {
+    throw new Error("Reference is required");
+  }
+  const response = await fetch(bibleApiUrl(clean));
+  if (!response.ok) {
+    const err = new Error("Verse not found");
+    err.status = 404;
+    throw err;
+  }
+  return response.json();
 }
 
 async function getPdfPageCount(filePath) {
@@ -144,6 +182,10 @@ function broadcastPage() {
   });
 }
 
+app.get("/api/health", (_req, res) => {
+  res.json({ ok: true });
+});
+
 app.get("/api/info", (_req, res) => {
   const ip = getLanIp();
   res.json({
@@ -155,6 +197,56 @@ app.get("/api/info", (_req, res) => {
     filename: presentation.filename,
     type: presentation.type,
   });
+});
+
+app.get("/api/themes", (_req, res) => {
+  res.json({ themes: BIBLE_THEMES });
+});
+
+app.get("/api/bible/books", async (_req, res) => {
+  try {
+    const response = await fetch("https://bible-api.com/data");
+    if (!response.ok) {
+      return res.status(502).json({ error: "Could not load Bible books" });
+    }
+    const data = await response.json();
+    return res.json(data);
+  } catch (err) {
+    return res.status(500).json({ error: err.message || "Bible books failed" });
+  }
+});
+
+app.get("/api/bible/chapter/:ref(*)", async (req, res) => {
+  try {
+    const data = await fetchBible(req.params.ref);
+    const verses = data.verses || [];
+    const verseNumbers = verses.map((v) => v.verse).filter(Boolean);
+    const maxVerse = verseNumbers.length ? Math.max(...verseNumbers) : 0;
+    return res.json({
+      reference: data.reference,
+      chapter: verses[0]?.chapter || null,
+      book: verses[0]?.book_name || null,
+      verseCount: maxVerse,
+      verses,
+    });
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message || "Chapter lookup failed" });
+  }
+});
+
+app.get("/api/bible/:ref(*)", async (req, res) => {
+  try {
+    const data = await fetchBible(req.params.ref);
+    return res.json({
+      reference: data.reference,
+      text: (data.text || "").trim(),
+      verses: data.verses || [],
+      translation_id: data.translation_id,
+      translation_name: data.translation_name,
+    });
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message || "Bible lookup failed" });
+  }
 });
 
 app.get("/api/document/meta", (_req, res) => {
@@ -186,10 +278,13 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
       ext === ".pptx" ||
       req.file.mimetype ===
         "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    const isVideo =
+      /^video\//i.test(req.file.mimetype || "") ||
+      [".mp4", ".mov", ".webm", ".m4v"].includes(ext);
 
-    if (!isPdf && !isPptx) {
+    if (!isPdf && !isPptx && !isVideo) {
       fs.unlinkSync(req.file.path);
-      return res.status(400).json({ error: "Only PDF and PPTX are supported" });
+      return res.status(400).json({ error: "Only PDF, PPTX, and video are supported" });
     }
 
     if (presentation.storedPath && fs.existsSync(presentation.storedPath)) {
@@ -210,11 +305,15 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     if (isPdf) {
       presentation.type = "pdf";
       presentation.totalPages = await getPdfPageCount(req.file.path);
-    } else {
+    } else if (isPptx) {
       presentation.type = "pptx";
       const slides = await extractPptxSlides(req.file.path);
       presentation.slideImages = slides;
       presentation.totalPages = Math.max(1, slides.length);
+    } else {
+      presentation.type = "video";
+      presentation.totalPages = 1;
+      presentation.slideImages = [];
     }
 
     const payload = {
@@ -225,6 +324,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
       currentPage: presentation.currentPage,
       documentUrl: "/api/document/file",
       slideImages: presentation.slideImages,
+      mimeType: presentation.mimeType,
     };
 
     io.emit("upload-document", payload);
@@ -233,35 +333,6 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: err.message || "Upload failed" });
-  }
-});
-
-const BIBLE_THEMES = [
-  { id: "nature-1", label: "Nature", image: "/backgrounds/nature-1.jpg" },
-  { id: "sky-1", label: "Sky", image: "/backgrounds/sky-1.jpg" },
-  { id: "forest-1", label: "Forest", image: "/backgrounds/forest-1.jpg" },
-  { id: "clouds-1", label: "Clouds", image: "/backgrounds/clouds-1.jpg" },
-];
-
-app.get("/api/themes", (_req, res) => {
-  res.json({ themes: BIBLE_THEMES });
-});
-
-app.get("/api/bible/:ref", async (req, res) => {
-  try {
-    const ref = encodeURIComponent(req.params.ref.trim());
-    const response = await fetch(`https://bible-api.com/${ref}`);
-    if (!response.ok) {
-      return res.status(404).json({ error: "Verse not found" });
-    }
-    const data = await response.json();
-    return res.json({
-      reference: data.reference,
-      text: (data.text || "").trim(),
-      verses: data.verses || [],
-    });
-  } catch (err) {
-    return res.status(500).json({ error: err.message || "Bible lookup failed" });
   }
 });
 
@@ -291,11 +362,15 @@ io.on("connection", (socket) => {
   });
 
   socket.on("show-verse", (data) => {
+    const backgroundUrl =
+      data && data.backgroundUrl
+        ? data.backgroundUrl
+        : "/backgrounds/nature-1.jpg";
     io.emit("show-verse", {
-      reference: data.reference || "",
-      text: data.text || "",
-      theme: data.theme || "nature-1",
-      backgroundUrl: data.backgroundUrl || "/backgrounds/nature-1.jpg",
+      reference: (data && data.reference) || "",
+      text: (data && data.text) || "",
+      theme: (data && data.theme) || "nature-1",
+      backgroundUrl,
     });
   });
 
