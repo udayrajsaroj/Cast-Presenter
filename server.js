@@ -19,6 +19,7 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 const app = express();
 const server = http.createServer(app);
 
+// Increased timeout for large uploads/processing
 server.timeout = 300000;
 server.keepAliveTimeout = 300000;
 
@@ -30,6 +31,7 @@ app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.static(PUBLIC_DIR));
 
+// Multer Configuration
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
   filename: (_req, file, cb) => {
@@ -39,6 +41,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 200 * 1024 * 1024 } });
 
+// Global Presentation State
 let presentation = {
   id: null,
   filename: null,
@@ -57,12 +60,7 @@ const BIBLE_THEMES = [
   { id: "clouds-1", label: "Clouds", image: "/backgrounds/clouds-1.jpg" },
 ];
 
-let bibleBooksCache = {
-  books: null,
-  loadedAt: 0,
-};
-
-const BIBLE_BOOKS_TTL_MS = 24 * 60 * 60 * 1000;
+// --- Helper Functions ---
 
 function getLanIp() {
   const nets = os.networkInterfaces();
@@ -78,51 +76,49 @@ function getLanIp() {
 
 function normalizeBibleRef(raw) {
   try {
-    return decodeURIComponent(String(raw || ""))
-      .trim()
-      .replace(/\s+/g, " ");
+    return decodeURIComponent(String(raw || "")).trim().replace(/\s+/g, " ");
   } catch (_e) {
-    return String(raw || "")
-      .trim()
-      .replace(/\s+/g, " ");
+    return String(raw || "").trim().replace(/\s+/g, " ");
   }
 }
 
-function bibleApiUrl(ref) {
+// --- Bible Logic (Bilingual) ---
+
+/**
+ * Fetches both English (KJV) and Hindi translations concurrently
+ */
+async function fetchBilingualBible(ref) {
   const clean = normalizeBibleRef(ref);
-  return `https://bible-api.com/${encodeURIComponent(clean)}`;
+  if (!clean) throw new Error("Reference is required");
+
+  // Fetch both English and Hindi concurrently
+  const [enRes, hiRes] = await Promise.all([
+    fetch(`https://bible-api.com/${encodeURIComponent(clean)}?translation=kjv`),
+    fetch(`https://bible-api.com/${encodeURIComponent(clean)}?translation=hindi`),
+  ]);
+
+  if (!enRes.ok) throw new Error("Verse not found (English lookup failed)");
+  
+  const enData = await enRes.json();
+  let hiText = "";
+
+  // Graceful fallback if Hindi translation fails or is missing
+  if (hiRes.ok) {
+    const hiData = await hiRes.json();
+    hiText = hiData.text || "";
+  } else {
+    console.warn(`Hindi translation not found for ${clean}, using fallback.`);
+    hiText = "Hindi translation not available for this verse."; // Or use a blank string
+  }
+
+  return {
+    reference: enData.reference,
+    enText: enData.text.trim(),
+    hiText: hiText.trim(),
+  };
 }
 
-async function fetchBible(ref) {
-  const clean = normalizeBibleRef(ref);
-  if (!clean) {
-    const err = new Error("Reference is required");
-    err.status = 400;
-    throw err;
-  }
-  const response = await fetch(bibleApiUrl(clean));
-  if (!response.ok) {
-    const err = new Error("Verse or chapter not found");
-    err.status = 404;
-    throw err;
-  }
-  return response.json();
-}
-
-async function getBibleBooks() {
-  const now = Date.now();
-  if (bibleBooksCache.books && now - bibleBooksCache.loadedAt < BIBLE_BOOKS_TTL_MS) {
-    return bibleBooksCache.books;
-  }
-  const response = await fetch("https://bible-api.com/data");
-  if (!response.ok) {
-    throw new Error("Could not load Bible books");
-  }
-  const data = await response.json();
-  const books = Array.isArray(data) ? data : data.books || [];
-  bibleBooksCache = { books, loadedAt: now };
-  return books;
-}
+// --- Document Processing ---
 
 async function getPdfPageCount(filePath) {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -210,9 +206,9 @@ function broadcastPage() {
   });
 }
 
-app.get("/api/health", (_req, res) => {
-  res.json({ ok: true });
-});
+// --- API Routes ---
+
+app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
 app.get("/api/info", (_req, res) => {
   const ip = getLanIp();
@@ -227,65 +223,36 @@ app.get("/api/info", (_req, res) => {
   });
 });
 
-app.get("/api/themes", (_req, res) => {
-  res.json({ themes: BIBLE_THEMES });
-});
+app.get("/api/themes", (_req, res) => res.json({ themes: BIBLE_THEMES }));
 
-app.get("/api/bible/books", async (_req, res) => {
+/**
+ * NEW: Bilingual Bible Endpoint
+ * Fetches English and Hindi text for a given reference.
+ */
+app.get("/api/bible/bilingual/:ref(*)", async (req, res) => {
   try {
-    const books = await getBibleBooks();
-    return res.json({ books, count: books.length });
+    const data = await fetchBilingualBible(req.params.ref);
+    return res.json(data);
   } catch (err) {
-    return res.status(500).json({ error: err.message || "Bible books failed" });
-  }
-});
-
-app.get("/api/bible/chapter/:ref(*)", async (req, res) => {
-  try {
-    const ref = normalizeBibleRef(req.params.ref);
-    const data = await fetchBible(ref);
-    const verses = data.verses || [];
-    const verseNumbers = verses.map((v) => Number(v.verse)).filter(Boolean);
-    const maxVerse = verseNumbers.length ? Math.max(...verseNumbers) : 0;
-    return res.json({
-      reference: data.reference,
-      chapter: verses[0]?.chapter || null,
-      book: verses[0]?.book_name || null,
-      verseCount: maxVerse,
-      verses,
-    });
-  } catch (err) {
-    return res
-      .status(err.status || 500)
-      .json({ error: err.message || "Chapter lookup failed" });
+    return res.status(500).json({ error: err.message || "Bible lookup failed" });
   }
 });
 
 app.get("/api/bible/:ref(*)", async (req, res) => {
+  // Kept for backwards compatibility, though Mobile App will now use /bilingual
   try {
-    const data = await fetchBible(req.params.ref);
+    const clean = normalizeBibleRef(req.params.ref);
+    const response = await fetch(`https://bible-api.com/${encodeURIComponent(clean)}?translation=kjv`);
+    if (!response.ok) throw new Error("Verse not found");
+    const data = await response.json();
     return res.json({
       reference: data.reference,
-      text: (data.text || "").trim(),
-      verses: data.verses || [],
-      translation_id: data.translation_id,
-      translation_name: data.translation_name,
+      text: data.text,
+      verses: data.verses,
     });
   } catch (err) {
-    return res
-      .status(err.status || 500)
-      .json({ error: err.message || "Bible lookup failed" });
+    return res.status(500).json({ error: err.message });
   }
-});
-
-app.get("/api/document/meta", (_req, res) => {
-  res.json({
-    filename: presentation.filename,
-    type: presentation.type,
-    totalPages: presentation.totalPages,
-    currentPage: presentation.currentPage,
-    slideImages: presentation.slideImages,
-  });
 });
 
 app.get("/api/document/file", (_req, res) => {
@@ -297,31 +264,21 @@ app.get("/api/document/file", (_req, res) => {
 
 app.post("/api/upload", upload.single("file"), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
     const ext = path.extname(req.file.originalname).toLowerCase();
     const isPdf = ext === ".pdf" || req.file.mimetype === "application/pdf";
-    const isPptx =
-      ext === ".pptx" ||
-      req.file.mimetype ===
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-    const isVideo =
-      /^video\//i.test(req.file.mimetype || "") ||
-      [".mp4", ".mov", ".webm", ".m4v"].includes(ext);
+    const isPptx = ext === ".pptx" || req.file.mimetype === "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    const isVideo = /^video\//i.test(req.file.mimetype || "") || [".mp4", ".mov", ".webm", ".m4v"].includes(ext);
 
     if (!isPdf && !isPptx && !isVideo) {
       fs.unlinkSync(req.file.path);
       return res.status(400).json({ error: "Only PDF, PPTX, and video are supported" });
     }
 
+    // Cleanup old file
     if (presentation.storedPath && fs.existsSync(presentation.storedPath)) {
-      try {
-        fs.unlinkSync(presentation.storedPath);
-      } catch (_e) {
-        /* ignore */
-      }
+      try { fs.unlinkSync(presentation.storedPath); } catch (_e) {}
     }
 
     presentation.id = String(Date.now());
@@ -365,6 +322,8 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
   }
 });
 
+// --- Socket Logic ---
+
 io.on("connection", (socket) => {
   socket.on("join-room", (data, ack) => {
     const role = data && data.role ? data.role : "viewer";
@@ -380,36 +339,30 @@ io.on("connection", (socket) => {
       slideImages: presentation.slideImages,
     };
     if (typeof ack === "function") ack(snapshot);
-    socket.emit("change-page", {
-      page: presentation.currentPage,
-      totalPages: presentation.totalPages,
-      type: presentation.type,
-      filename: presentation.filename,
-      slideImages: presentation.slideImages,
-      documentUrl: presentation.storedPath ? "/api/document/file" : null,
-    });
+    socket.emit("change-page", snapshot);
   });
 
   socket.on("show-verse", (data) => {
-    const backgroundUrl =
-      data && data.backgroundUrl ? data.backgroundUrl : "/backgrounds/nature-1.jpg";
+    // Data now expected to contain: reference, enText, hiText, theme, backgroundUrl
+    const backgroundUrl = data?.backgroundUrl || "/backgrounds/nature-1.jpg";
     io.emit("show-verse", {
-      reference: (data && data.reference) || "",
-      text: (data && data.text) || "",
-      theme: (data && data.theme) || "nature-1",
+      reference: data?.reference || "",
+      enText: data?.enText || "",
+      hiText: data?.hiText || "",
+      theme: data?.theme || "nature-1",
       backgroundUrl,
     });
   });
 
   socket.on("video-control", (data) => {
     io.emit("video-control", {
-      action: data && data.action ? data.action : "play",
+      action: data?.action || "play",
       time: typeof data?.time === "number" ? data.time : undefined,
     });
   });
 
   socket.on("change-page", (data) => {
-    const page = Number(data && data.page);
+    const page = Number(data?.page);
     if (!Number.isFinite(page) || page < 1) return;
     const max = Math.max(1, presentation.totalPages);
     presentation.currentPage = Math.min(Math.max(1, page), max);
@@ -433,6 +386,5 @@ io.on("connection", (socket) => {
 
 server.listen(PORT, "0.0.0.0", () => {
   const ip = getLanIp();
-  console.log(`Cast server: http://${ip}:${PORT}`);
-  console.log(`Open on TV/browser: http://${ip}:${PORT}`);
+  console.log(`Cast server running: http://${ip}:${PORT}`);
 });
