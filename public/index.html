@@ -160,13 +160,13 @@
         <span id="verseRef">JOHN 3:16</span>
       </div>
       
-      <!-- HINDI FIRST -->
+      <!-- HINDI FIRST - Always display -->
       <div id="verseHiSection" class="verse-section">
         <div id="verseHiText">क्योंकि परमेश्वर ने इतना जगत से प्रेम किया...</div>
       </div>
       
       <!-- ENGLISH SECOND -->
-      <div id="verseEnSection" class="verse-section">
+      <div id="verseEnSection" class="verseSection">
         <div id="verseEnText">For God so loved the world...</div>
       </div>
     </div>
@@ -192,9 +192,6 @@
     const verseRef = document.getElementById("verseRef");
     const verseEnText = document.getElementById("verseEnText");
     const verseHiText = document.getElementById("verseHiText");
-
-    const verseHiSection = document.getElementById("verseHiSection");
-    const verseEnSection = document.getElementById("verseEnSection");
 
     let pdfDoc = null;
     let renderTask = null;
@@ -231,7 +228,7 @@
       stageEl.style.display = "none";
       hideAll();
 
-      // Clean Text (Fix Spacing)
+      // Clean Text
       let hiTxt = (payload.hiText || "").replace(/\s+/g, ' ').trim();
       let enTxt = (payload.enText || "").replace(/\s+/g, ' ').trim();
 
@@ -242,18 +239,8 @@
       verseEnText.textContent = enTxt;
       verseHiText.textContent = hiTxt;
       
-      // Handle Visibility and Order
-      // Hide Hindi if it's the error message
-      const hasHindi = hiTxt && !hiTxt.toLowerCase().includes("not available");
-      
-      if (hasHindi) {
-        verseHiSection.style.display = 'flex';
-        verseEnSection.style.flex = '1'; 
-      } else {
-        verseHiSection.style.display = 'none';
-        verseEnSection.style.flex = '2'; 
-      }
-      
+      // FIX: Always show both sections to maintain layout.
+      // If Hindi is empty string, it just shows empty space above English.
       verseStage.style.display = "block";
     }
 
