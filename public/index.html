@@ -109,23 +109,23 @@
       text-shadow: 0 2px 4px rgba(0,0,0,0.8);
     }
     #verseRef {
-      /* Dynamic scaling: min 2rem, preferred 5vw, max 4rem */
-      font-size: clamp(2rem, 5vw, 4rem);
+      /* REDUCED SIZE: min 1.5rem, preferred 3vw, max 3rem */
+      font-size: clamp(1.5rem, 3vw, 3rem);
     }
 
-    /* 2. English (Middle) - Allocated ~42% height */
+    /* 2. English (Middle) - Allocated flexible height */
     #verseEnSection {
       flex: 1; /* Grow to fill space */
       font-family: 'Georgia', 'Times New Roman', serif;
       font-style: italic;
     }
     #verseEnText {
-      /* Dynamic scaling: min 2.5rem, preferred 6vw, max 7rem */
-      font-size: clamp(2.5rem, 6vw, 7rem);
+      /* REDUCED SIZE: min 1.5rem, preferred 3.5vw, max 5rem */
+      font-size: clamp(1.5rem, 3.5vw, 5rem);
       line-height: 1.2;
     }
 
-    /* 3. Hindi (Bottom) - Allocated ~42% height */
+    /* 3. Hindi (Bottom) - Allocated flexible height */
     #verseHiSection {
       flex: 1; /* Grow to fill space */
       font-family: 'Noto Sans Devanagari', 'Mangal', sans-serif;
@@ -133,8 +133,8 @@
       color: #e0f2f1; /* Slightly lighter white for Hindi */
     }
     #verseHiText {
-      /* Dynamic scaling: min 2.5rem, preferred 6vw, max 7rem */
-      font-size: clamp(2.5rem, 6vw, 7rem);
+      /* REDUCED SIZE: min 1.5rem, preferred 3.5vw, max 5rem */
+      font-size: clamp(1.5rem, 3.5vw, 5rem);
       line-height: 1.4;
     }
 
@@ -200,6 +200,10 @@
     const verseEnText = document.getElementById("verseEnText");
     const verseHiText = document.getElementById("verseHiText");
 
+    // Elements for layout control
+    const verseHiSection = document.getElementById("verseHiSection");
+    const verseEnSection = document.getElementById("verseEnSection");
+
     let pdfDoc = null;
     let renderTask = null;
     let displayMode = "waiting";
@@ -240,7 +244,19 @@
       
       verseRef.textContent = payload.reference || "";
       verseEnText.textContent = payload.enText || "";
-      verseHiText.textContent = payload.hiText || ""; // New Bilingual Field
+      verseHiText.textContent = payload.hiText || "";
+      
+      // FIX: Handle Hindi Visibility
+      // If no Hindi text is provided, hide the section and expand English
+      const hasHindi = payload.hiText && payload.hiText.length > 0;
+      
+      if (hasHindi) {
+        verseHiSection.style.display = 'flex';
+        verseEnSection.style.flex = '1'; // Normal shared space
+      } else {
+        verseHiSection.style.display = 'none';
+        verseEnSection.style.flex = '2'; // Give English more vertical space
+      }
       
       verseStage.style.display = "block";
     }
