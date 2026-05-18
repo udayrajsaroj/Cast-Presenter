@@ -61,7 +61,7 @@
       inset: 0;
       overflow: hidden;
       z-index: 20;
-      display: none; /* Hidden by default */
+      display: none; 
     }
     #verseBg {
       position: absolute;
@@ -73,7 +73,7 @@
     #verseOverlay {
       position: absolute;
       inset: 0;
-      background: rgba(0, 0, 0, 0.4); /* Slight dim for readability */
+      background: rgba(0, 0, 0, 0.4); 
     }
     #verseContent {
       position: relative;
@@ -87,59 +87,53 @@
       color: #fff;
     }
 
-    /* Verse Sections */
     .verse-section {
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 1vh 2vw;
-      overflow: hidden; /* Critical to prevent scrolling */
+      overflow: hidden; 
       word-break: break-word;
       white-space: pre-wrap;
     }
 
-    /* 1. Reference (Top) - Allocated ~15% height */
     #verseRefSection {
       flex: 0 0 15%;
       font-family: sans-serif;
       font-weight: 800;
       text-transform: uppercase;
       letter-spacing: 1px;
-      color: #ffeb3b; /* Yellow/Gold for reference */
+      color: #ffeb3b; 
       text-shadow: 0 2px 4px rgba(0,0,0,0.8);
     }
     #verseRef {
-      /* REDUCED SIZE: min 1.5rem, preferred 3vw, max 3rem */
       font-size: clamp(1.5rem, 3vw, 3rem);
     }
 
-    /* 2. English (Middle) - Allocated flexible height */
-    #verseEnSection {
-      flex: 1; /* Grow to fill space */
-      font-family: 'Georgia', 'Times New Roman', serif;
-      font-style: italic;
-    }
-    #verseEnText {
-      /* REDUCED SIZE: min 1.5rem, preferred 3.5vw, max 5rem */
-      font-size: clamp(1.5rem, 3.5vw, 5rem);
-      line-height: 1.2;
-    }
-
-    /* 3. Hindi (Bottom) - Allocated flexible height */
+    /* --- ORDER SWAPPED: Hindi is now here (Top) --- */
     #verseHiSection {
-      flex: 1; /* Grow to fill space */
+      flex: 1; 
       font-family: 'Noto Sans Devanagari', 'Mangal', sans-serif;
       font-weight: 500;
-      color: #e0f2f1; /* Slightly lighter white for Hindi */
+      color: #e0f2f1; 
     }
     #verseHiText {
-      /* REDUCED SIZE: min 1.5rem, preferred 3.5vw, max 5rem */
       font-size: clamp(1.5rem, 3.5vw, 5rem);
       line-height: 1.4;
     }
 
+    /* --- ORDER SWAPPED: English is now here (Bottom) --- */
+    #verseEnSection {
+      flex: 1; 
+      font-family: 'Georgia', 'Times New Roman', serif;
+      font-style: italic;
+    }
+    #verseEnText {
+      font-size: clamp(1.5rem, 3.5vw, 5rem);
+      line-height: 1.2;
+    }
+
   </style>
-  <!-- Load Socket.io Client -->
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
@@ -161,19 +155,19 @@
     <div id="verseBg"></div>
     <div id="verseOverlay"></div>
     <div id="verseContent">
-      <!-- Top: Reference -->
+      <!-- Reference -->
       <div id="verseRefSection" class="verse-section">
         <span id="verseRef">JOHN 3:16</span>
       </div>
       
-      <!-- Middle: English -->
-      <div id="verseEnSection" class="verse-section">
-        <div id="verseEnText">For God so loved the world...</div>
-      </div>
-      
-      <!-- Bottom: Hindi -->
+      <!-- HINDI FIRST -->
       <div id="verseHiSection" class="verse-section">
         <div id="verseHiText">क्योंकि परमेश्वर ने इतना जगत से प्रेम किया...</div>
+      </div>
+      
+      <!-- ENGLISH SECOND -->
+      <div id="verseEnSection" class="verse-section">
+        <div id="verseEnText">For God so loved the world...</div>
       </div>
     </div>
   </div>
@@ -184,7 +178,6 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
 
-    // Elements
     const waitingEl = document.getElementById("waiting");
     const stageEl = document.getElementById("stage");
     const pdfCanvas = document.getElementById("pdfCanvas");
@@ -200,7 +193,6 @@
     const verseEnText = document.getElementById("verseEnText");
     const verseHiText = document.getElementById("verseHiText");
 
-    // Elements for layout control
     const verseHiSection = document.getElementById("verseHiSection");
     const verseEnSection = document.getElementById("verseEnSection");
 
@@ -246,16 +238,16 @@
       verseEnText.textContent = payload.enText || "";
       verseHiText.textContent = payload.hiText || "";
       
-      // FIX: Handle Hindi Visibility
-      // If no Hindi text is provided, hide the section and expand English
+      // Handle Visibility based on swapped order
       const hasHindi = payload.hiText && payload.hiText.length > 0;
       
       if (hasHindi) {
         verseHiSection.style.display = 'flex';
-        verseEnSection.style.flex = '1'; // Normal shared space
+        verseEnSection.style.flex = '1'; 
       } else {
+        // If no Hindi, hide Hindi section and expand English to take its spot
         verseHiSection.style.display = 'none';
-        verseEnSection.style.flex = '2'; // Give English more vertical space
+        verseEnSection.style.flex = '2'; 
       }
       
       verseStage.style.display = "block";
@@ -368,7 +360,6 @@
       await renderCurrent();
     }
 
-    // Socket Listeners
     socket.on("connect", () => {
       socket.emit("join-room", { role: "viewer" }, async (ack) => {
         if (!ack) return;
