@@ -236,6 +236,35 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
   }
 });
 
+const BIBLE_THEMES = [
+  { id: "nature-1", label: "Nature", image: "/backgrounds/nature-1.jpg" },
+  { id: "sky-1", label: "Sky", image: "/backgrounds/sky-1.jpg" },
+  { id: "forest-1", label: "Forest", image: "/backgrounds/forest-1.jpg" },
+  { id: "clouds-1", label: "Clouds", image: "/backgrounds/clouds-1.jpg" },
+];
+
+app.get("/api/themes", (_req, res) => {
+  res.json({ themes: BIBLE_THEMES });
+});
+
+app.get("/api/bible/:ref", async (req, res) => {
+  try {
+    const ref = encodeURIComponent(req.params.ref.trim());
+    const response = await fetch(`https://bible-api.com/${ref}`);
+    if (!response.ok) {
+      return res.status(404).json({ error: "Verse not found" });
+    }
+    const data = await response.json();
+    return res.json({
+      reference: data.reference,
+      text: (data.text || "").trim(),
+      verses: data.verses || [],
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || "Bible lookup failed" });
+  }
+});
+
 io.on("connection", (socket) => {
   socket.on("join-room", (data, ack) => {
     const role = data && data.role ? data.role : "viewer";
@@ -258,6 +287,15 @@ io.on("connection", (socket) => {
       filename: presentation.filename,
       slideImages: presentation.slideImages,
       documentUrl: presentation.storedPath ? "/api/document/file" : null,
+    });
+  });
+
+  socket.on("show-verse", (data) => {
+    io.emit("show-verse", {
+      reference: data.reference || "",
+      text: data.text || "",
+      theme: data.theme || "nature-1",
+      backgroundUrl: data.backgroundUrl || "/backgrounds/nature-1.jpg",
     });
   });
 
