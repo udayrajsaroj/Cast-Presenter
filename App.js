@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy"; // LEGACY FIX (from Doc 4)
 import * as Network from "expo-network";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { io } from "socket.io-client";
@@ -104,7 +104,7 @@ const POPULAR_VERSES = [
   "Matthew 28:19",
 ];
 
-// Helpers
+// --- Helpers ---
 function normalizeBaseUrl(url) {
   let trimmed = (url || "").trim().replace(/\/+$/, "");
   if (!trimmed) return "";
@@ -170,7 +170,7 @@ function getSuggestions(query) {
   return [...new Set(out)].slice(0, 8);
 }
 
-// Cleaned up HTML Generator
+// --- Preview HTML Generator ---
 function buildPreviewHtml({ baseUrl, docType, page, totalPages, slideImages }) {
   const safeBase = JSON.stringify(baseUrl);
   const safeType = JSON.stringify(docType || "");
@@ -244,6 +244,7 @@ function buildPreviewHtml({ baseUrl, docType, page, totalPages, slideImages }) {
 </html>`;
 }
 
+// =============================================================================
 export default function App() {
   const socketRef = useRef(null);
   const [serverInput, setServerInput] = useState("");
@@ -269,12 +270,11 @@ export default function App() {
   const [selectedTheme, setSelectedTheme] = useState("nature-1");
   const [loadingVerse, setLoadingVerse] = useState(false);
   const [currentRef, setCurrentRef] = useState(null);
-  const [versePreview, setVersePreview] = useState({
-    en: "",
-    hi: "",
-    reference: "",
-  });
+  const [versePreview, setVersePreview] = useState({ en: "", hi: "", reference: "" });
   const [chapterVerseCount, setChapterVerseCount] = useState(0);
+
+  // ✅ MERGED: Font Size Scale State (from Doc 4)
+  const [verseFontSizeScale, setVerseFontSizeScale] = useState(1.0);
 
   const previewHtml = useMemo(
     () =>
@@ -385,19 +385,14 @@ export default function App() {
       }
     })();
     return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-      }
+      if (socketRef.current) socketRef.current.disconnect();
     };
   }, [connectSocket, refreshServerInfo]);
 
   const sendPageUpdate = useCallback(
     (pageNumber) => {
       if (!socketRef.current || !connected) return;
-      const clamped = Math.min(
-        Math.max(1, pageNumber),
-        Math.max(1, totalPages)
-      );
+      const clamped = Math.min(Math.max(1, pageNumber), Math.max(1, totalPages));
       setCurrentPage(clamped);
       socketRef.current.emit("change-page", { page: clamped });
     },
@@ -422,8 +417,7 @@ export default function App() {
   const emitVerseToTv = useCallback(
     (preview) => {
       if (!socketRef.current || !connected || !preview) return;
-      const theme =
-        themes.find((t) => t.id === selectedTheme) || themes[0];
+      const theme = themes.find((t) => t.id === selectedTheme) || themes[0];
       const bgPath = theme?.image || "/backgrounds/nature-1.jpg";
       socketRef.current.emit("show-verse", {
         reference: preview.reference,
@@ -436,13 +430,24 @@ export default function App() {
     [connected, themes, selectedTheme, serverUrl]
   );
 
+  // ✅ MERGED: Font Size Adjustment (from Doc 4)
+  const adjustFontSize = useCallback(
+    (delta) => {
+      setVerseFontSizeScale((prevScale) => {
+        const newScale = Math.max(0.5, Math.min(2.5, parseFloat((prevScale + delta).toFixed(2))));
+        if (socketRef.current && connected) {
+          socketRef.current.emit("change-font-size", { scale: newScale });
+        }
+        return newScale;
+      });
+    },
+    [connected]
+  );
+
   const loadVerse = useCallback(
     async (refText, options = { showOnTv: false }) => {
       if (!serverUrl) {
-        Alert.alert(
-          "Connect first",
-          "Enter server URL and tap Connect."
-        );
+        Alert.alert("Connect first", "Enter server URL and tap Connect.");
         return;
       }
       const q = (refText || verseQuery).trim();
@@ -451,30 +456,21 @@ export default function App() {
       setLoadingVerse(true);
       try {
         const ref = encodeURIComponent(q);
-        const res = await fetch(
-          `${serverUrl}/api/bible/bilingual/${ref}`
-        );
+        const res = await fetch(`${serverUrl}/api/bible/bilingual/${ref}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || "Verse not found");
 
         const parsed = parseReference(json.reference || q);
         if (parsed) {
           setCurrentRef(parsed);
-          const count = await fetchChapterVerseCount(
-            parsed.book,
-            parsed.chapter
-          );
+          const count = await fetchChapterVerseCount(parsed.book, parsed.chapter);
           setChapterVerseCount(count);
         }
 
         let hiText = (json.hiText || "").replace(/\s+/g, " ").trim();
         let enText = (json.enText || "").replace(/\s+/g, " ").trim();
 
-        const preview = {
-          reference: json.reference || q,
-          en: enText,
-          hi: hiText,
-        };
+        const preview = { reference: json.reference || q, en: enText, hi: hiText };
         setVersePreview(preview);
         setVerseQuery(json.reference || q);
 
@@ -526,9 +522,7 @@ export default function App() {
     } else {
       verse += 1;
     }
-    await loadVerse(formatReference({ book, chapter, verse }), {
-      showOnTv: true,
-    });
+    await loadVerse(formatReference({ book, chapter, verse }), { showOnTv: true });
   }, [currentRef, chapterVerseCount, verseQuery, loadVerse, fetchChapterVerseCount]);
 
   const goVersePrev = useCallback(async () => {
@@ -547,9 +541,7 @@ export default function App() {
     } else {
       verse -= 1;
     }
-    await loadVerse(formatReference({ book, chapter, verse }), {
-      showOnTv: true,
-    });
+    await loadVerse(formatReference({ book, chapter, verse }), { showOnTv: true });
   }, [currentRef, loadVerse, fetchChapterVerseCount]);
 
   const pickDocument = useCallback(async () => {
@@ -614,9 +606,7 @@ export default function App() {
       setSlideImages(json.slideImages || []);
       if (socketRef.current) {
         socketRef.current.emit("upload-document", json);
-        socketRef.current.emit("change-page", {
-          page: json.currentPage || 1,
-        });
+        socketRef.current.emit("change-page", { page: json.currentPage || 1 });
       }
     } catch (err) {
       Alert.alert("Upload error", err.message || String(err));
@@ -634,9 +624,9 @@ export default function App() {
     sendPageUpdate(currentPage + 1);
   };
 
-  const topCastLine =
-    castUrl || (serverUrl ? serverUrl : `http://${phoneIp}:3000`);
+  const topCastLine = castUrl || (serverUrl ? serverUrl : `http://${phoneIp}:3000`);
 
+  // =============================================================================
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style="light" />
@@ -647,12 +637,9 @@ export default function App() {
         {/* Top Bar */}
         <View style={styles.topBar}>
           <Text style={styles.topTitle}>Open on your TV</Text>
-          <Text style={styles.topUrl} selectable>
-            {topCastLine}
-          </Text>
+          <Text style={styles.topUrl} selectable>{topCastLine}</Text>
           <Text style={styles.topHint}>
-            Phone IP: {phoneIp} · Connection:{" "}
-            {connected ? "Connected" : "Disconnected"}
+            Phone IP: {phoneIp} · Connection: {connected ? "Connected" : "Disconnected"}
           </Text>
         </View>
 
@@ -667,10 +654,7 @@ export default function App() {
             value={serverInput}
             onChangeText={setServerInput}
           />
-          <TouchableOpacity
-            style={styles.secondaryBtn}
-            onPress={saveAndConnect}
-          >
+          <TouchableOpacity style={styles.secondaryBtn} onPress={saveAndConnect}>
             <Text style={styles.secondaryBtnText}>Connect</Text>
           </TouchableOpacity>
         </View>
@@ -702,16 +686,13 @@ export default function App() {
               {uploading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.primaryBtnText}>
-                  Pick PDF, PPTX, or Video
-                </Text>
+                <Text style={styles.primaryBtnText}>Pick PDF, PPTX, or Video</Text>
               )}
             </TouchableOpacity>
 
             {filename ? (
               <Text style={styles.fileName}>
-                {filename} · {docType?.toUpperCase()} · {currentPage}/
-                {totalPages || "?"}
+                {filename} · {docType?.toUpperCase()} · {currentPage}/{totalPages || "?"}
               </Text>
             ) : null}
 
@@ -727,34 +708,24 @@ export default function App() {
                   allowsInlineMediaPlayback
                 />
               ) : (
-                <Text style={styles.previewPlaceholder}>
-                  Slide preview appears here
-                </Text>
+                <Text style={styles.previewPlaceholder}>Slide preview appears here</Text>
               )}
             </View>
 
             {docType !== "video" && (
               <View style={styles.controls}>
                 <TouchableOpacity
-                  style={[
-                    styles.navBtn,
-                    currentPage <= 1 && styles.disabled,
-                  ]}
+                  style={[styles.navBtn, currentPage <= 1 && styles.disabled]}
                   onPress={goPrev}
                   disabled={currentPage <= 1 || totalPages === 0}
                 >
                   <Text style={styles.navBtnText}>PREVIOUS</Text>
                 </TouchableOpacity>
                 <Text style={styles.pageIndicator}>
-                  {totalPages > 0
-                    ? `${currentPage} / ${totalPages}`
-                    : "—"}
+                  {totalPages > 0 ? `${currentPage} / ${totalPages}` : "—"}
                 </Text>
                 <TouchableOpacity
-                  style={[
-                    styles.navBtn,
-                    currentPage >= totalPages && styles.disabled,
-                  ]}
+                  style={[styles.navBtn, currentPage >= totalPages && styles.disabled]}
                   onPress={goNext}
                   disabled={currentPage >= totalPages || totalPages === 0}
                 >
@@ -800,26 +771,21 @@ export default function App() {
               )}
             </View>
 
-            {showSuggestions &&
-              suggestions.length > 0 &&
-              verseQuery.trim().length > 0 && (
-                <View style={styles.suggestBox}>
-                  <ScrollView
-                    keyboardShouldPersistTaps="handled"
-                    nestedScrollEnabled={true}
-                  >
-                    {suggestions.map((s) => (
-                      <TouchableOpacity
-                        key={s}
-                        style={styles.suggestItem}
-                        onPress={() => selectSuggestion(s)}
-                      >
-                        <Text style={styles.suggestText}>{s}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              )}
+            {showSuggestions && suggestions.length > 0 && verseQuery.trim().length > 0 && (
+              <View style={styles.suggestBox}>
+                <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled={true}>
+                  {suggestions.map((s) => (
+                    <TouchableOpacity
+                      key={s}
+                      style={styles.suggestItem}
+                      onPress={() => selectSuggestion(s)}
+                    >
+                      <Text style={styles.suggestText}>{s}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
 
             <TouchableOpacity
               style={[styles.secondaryBtn, { marginBottom: 12 }]}
@@ -834,35 +800,45 @@ export default function App() {
 
             {versePreview.reference ? (
               <View style={styles.versePreviewBox}>
-                <Text style={styles.versePreviewRef}>
-                  {versePreview.reference}
-                </Text>
+                <Text style={styles.versePreviewRef}>{versePreview.reference}</Text>
 
-                {/* HINDI SECTION FIRST */}
+                {/* HINDI FIRST */}
                 <View style={styles.hindiContainer}>
-                  <Text
-                    style={[styles.versePreviewText, styles.hindiText]}
-                  >
+                  <Text style={[styles.versePreviewText, styles.hindiText]}>
                     {versePreview.hi}
                   </Text>
                   <View style={styles.dividerLine} />
                 </View>
 
-                {/* ENGLISH SECTION SECOND */}
-                <Text style={styles.versePreviewText}>
-                  {versePreview.en}
-                </Text>
+                {/* ENGLISH SECOND */}
+                <Text style={styles.versePreviewText}>{versePreview.en}</Text>
               </View>
             ) : null}
 
-            <Text style={[styles.label, { marginTop: 12 }]}>
-              Background Theme
-            </Text>
+            {/* ✅ MERGED: Text Size Controls (from Doc 4) */}
+            <Text style={[styles.label, { marginTop: 12 }]}>Text Size Control</Text>
+            <View style={styles.fontSizeControls}>
+              <TouchableOpacity
+                style={styles.sizeBtn}
+                onPress={() => adjustFontSize(-0.1)}
+              >
+                <Text style={styles.sizeBtnText}>A−</Text>
+              </TouchableOpacity>
+              <Text style={styles.sizeDisplay}>
+                {Math.round(verseFontSizeScale * 100)}%
+              </Text>
+              <TouchableOpacity
+                style={styles.sizeBtn}
+                onPress={() => adjustFontSize(0.1)}
+              >
+                <Text style={styles.sizeBtnText}>A+</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.label, { marginTop: 4 }]}>Background Theme</Text>
 
             {themes.length === 0 ? (
-              <Text style={styles.themeHint}>
-                Connect to load themes.
-              </Text>
+              <Text style={styles.themeHint}>Connect to load themes.</Text>
             ) : (
               <ScrollView
                 horizontal
@@ -878,9 +854,7 @@ export default function App() {
                       selectedTheme === t.id && styles.themeChipActive,
                     ]}
                   >
-                    <Text style={styles.themeChipText}>
-                      {t.label || t.id}
-                    </Text>
+                    <Text style={styles.themeChipText}>{t.label || t.id}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -903,10 +877,7 @@ export default function App() {
 
             <View style={styles.controls}>
               <TouchableOpacity
-                style={[
-                  styles.navBtn,
-                  (!currentRef || loadingVerse) && styles.disabled,
-                ]}
+                style={[styles.navBtn, (!currentRef || loadingVerse) && styles.disabled]}
                 onPress={goVersePrev}
                 disabled={!currentRef || loadingVerse}
               >
@@ -914,9 +885,7 @@ export default function App() {
               </TouchableOpacity>
               <Text style={styles.pageIndicator}>
                 {currentRef ? `v${currentRef.verse}` : "—"}
-                {chapterVerseCount > 0
-                  ? ` / ${chapterVerseCount}`
-                  : ""}
+                {chapterVerseCount > 0 ? ` / ${chapterVerseCount}` : ""}
               </Text>
               <TouchableOpacity
                 style={[styles.navBtn, loadingVerse && styles.disabled]}
@@ -933,6 +902,7 @@ export default function App() {
   );
 }
 
+// =============================================================================
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#0f172a" },
   container: { padding: 16, paddingBottom: 40 },
@@ -951,12 +921,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
   },
-  label: {
-    color: "#cbd5e1",
-    marginBottom: 8,
-    fontSize: 14,
-    fontWeight: "600",
-  },
+  label: { color: "#cbd5e1", marginBottom: 8, fontSize: 14, fontWeight: "600" },
   input: {
     backgroundColor: "#0f172a",
     color: "#f8fafc",
@@ -968,11 +933,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     fontSize: 15,
   },
-  searchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-  },
+  searchRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
   searchInput: {
     flex: 1,
     backgroundColor: "#0f172a",
@@ -1001,11 +962,7 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     alignItems: "center",
   },
-  secondaryBtnText: {
-    color: "#f8fafc",
-    fontWeight: "600",
-    fontSize: 14,
-  },
+  secondaryBtnText: { color: "#f8fafc", fontWeight: "600", fontSize: 14 },
   disabled: { opacity: 0.45 },
   fileName: { color: "#e2e8f0", marginBottom: 12, fontSize: 13 },
   previewBox: {
@@ -1134,10 +1091,30 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   hindiText: {
-    fontFamily:
-      Platform.OS === "ios" ? "Devanagari Sangam MN" : "serif",
+    fontFamily: Platform.OS === "ios" ? "Devanagari Sangam MN" : "serif",
     color: "#cbd5e1",
     fontStyle: "italic",
     fontSize: 15,
   },
+
+  // ✅ MERGED: Font Size Control Styles (from Doc 4)
+  fontSizeControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#0f172a",
+    borderRadius: 8,
+    padding: 8,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#334155",
+  },
+  sizeBtn: {
+    backgroundColor: "#334155",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 6,
+  },
+  sizeBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  sizeDisplay: { color: "#f8fafc", fontSize: 16, fontWeight: "800" },
 });

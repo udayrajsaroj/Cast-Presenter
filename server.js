@@ -310,7 +310,6 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
       presentation.totalPages = pdf.numPages;
     } else if (isPptx) {
       presentation.type = "pptx";
-      // PPTX Extract logic is back!
       const slides = await extractPptxSlides(req.file.path);
       presentation.slideImages = slides; 
       presentation.totalPages = Math.max(1, slides.length);
@@ -367,6 +366,11 @@ io.on("connection", (socket) => {
       theme: data?.theme || "nature-1",
       backgroundUrl: data?.backgroundUrl || "/backgrounds/nature-1.jpg",
     });
+  });
+
+  // NAYA: Font size change control logic
+  socket.on("change-font-size", (data) => {
+    io.emit("change-font-size", { scale: data?.scale || 1.0 });
   });
 
   socket.on("change-page", (data) => {
