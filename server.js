@@ -102,7 +102,7 @@ function getStandardBookName(inputName) {
 function localParseReference(input) {
   const s = (input || "").trim();
   if (!s) return null;
-  const m = s.match(/^((?:\d\s*)?[a-zA-Z]+(?:\s+[a-zA-Z]+)?)\s+(\d+)\s*:\s*(\d+)/i);
+  const m = s.match(/^((?:\d\s*)?[a-zA-Z]+(?:\s+[a-zA-Z]+)?)\s+(\d+)(?:\s+|:)(\d+)/i);
   if (!m) return null;
   return {
     book: m[1].trim(),
