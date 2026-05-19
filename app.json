@@ -19,7 +19,6 @@
       "config": {
         "usesCleartextTraffic": true
       },
-      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#0f172a"
       },
@@ -28,7 +27,15 @@
     "plugins": [
       "expo-document-picker",
       "expo-asset",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {

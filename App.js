@@ -14,7 +14,9 @@ import {
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system/legacy"; // LEGACY FIX (from Doc 4)
+// FIX 1: Correct dual import — FileSystem for cacheDirectory, copyAsync from legacy
+import * as FileSystem from "expo-file-system";
+import { copyAsync } from "expo-file-system/legacy";
 import * as Network from "expo-network";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { io } from "socket.io-client";
@@ -274,7 +276,7 @@ export default function App() {
   const [versePreview, setVersePreview] = useState({ en: "", hi: "", reference: "" });
   const [chapterVerseCount, setChapterVerseCount] = useState(0);
 
-  // ✅ MERGED: Font Size Scale State (from Doc 4)
+  // Font Size Scale State
   const [verseFontSizeScale, setVerseFontSizeScale] = useState(1.0);
 
   // Setup screen state
@@ -317,12 +319,17 @@ export default function App() {
       socketRef.current.disconnect();
       socketRef.current = null;
     }
+    // FIX 3: Use "polling" transport to avoid WebSocket blocking on Android/firewall
     const socket = io(base, {
-      transports: ["websocket", "polling"],
+      transports: ["polling"],
       reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      timeout: 10000,
     });
     socketRef.current = socket;
     socket.on("connect", () => {
+      console.log("SUCCESS: Socket Connected!");
       setConnected(true);
       socket.emit("join-room", { role: "presenter" }, (ack) => {
         if (!ack) return;
@@ -334,7 +341,10 @@ export default function App() {
       });
     });
     socket.on("disconnect", () => setConnected(false));
-    socket.on("connect_error", () => setConnected(false));
+    socket.on("connect_error", (err) => {
+      console.log("ERROR: Connection failed!", err.message);
+      setConnected(false);
+    });
     socket.on("change-page", (payload) => {
       if (payload.page) setCurrentPage(payload.page);
       if (payload.totalPages) setTotalPages(payload.totalPages);
@@ -398,6 +408,7 @@ export default function App() {
         setServerUrl(base);
         connectSocket(base);
         await refreshServerInfo(base);
+        setSetupDone(true);
       }
     })();
     return () => {
@@ -446,7 +457,7 @@ export default function App() {
     [connected, themes, selectedTheme, serverUrl]
   );
 
-  // ✅ MERGED: Font Size Adjustment (from Doc 4)
+  // Font Size Adjustment
   const adjustFontSize = useCallback(
     (delta) => {
       setVerseFontSizeScale((prevScale) => {
@@ -588,14 +599,21 @@ export default function App() {
           : name.toLowerCase().match(/\.(mp4|mov|webm|m4v)$/)
           ? "video/mp4"
           : "application/pdf");
-      // Android par content:// URI ko file:// mein convert karo
-      if (Platform.OS === "android" && uploadUri && !uploadUri.startsWith("file://")) {
-        const dest = `${FileSystem.cacheDirectory}${name}`;
-        await FileSystem.copyAsync({ from: uploadUri, to: dest });
-        uploadUri = dest;
+
+      // FIX 2 + FIX 4: Proper Android URI handling using imported copyAsync
+      if (Platform.OS === "android" && uploadUri) {
+        // Agar content:// URI hai toh file:// mein copy karo
+        if (!uploadUri.startsWith("file://")) {
+          const dest = `${FileSystem.cacheDirectory}${name}`;
+          await copyAsync({ from: uploadUri, to: dest }); // FIX 2: named import use ho raha hai
+          uploadUri = dest;
+        }
+        // FIX 4: Ensure file:// prefix is present after copy
+        if (!uploadUri.startsWith("file://")) {
+          uploadUri = `file://${uploadUri}`;
+        }
       }
 
-      // fetch + FormData — FileSystem.uploadAsync se zyada reliable hai Android par
       const formData = new FormData();
       formData.append("file", {
         uri: uploadUri,
@@ -858,7 +876,7 @@ export default function App() {
               </View>
             ) : null}
 
-            {/* ✅ MERGED: Text Size Controls (from Doc 4) */}
+            {/* Text Size Controls */}
             <Text style={[styles.label, { marginTop: 12 }]}>Text Size Control</Text>
             <View style={styles.fontSizeControls}>
               <TouchableOpacity
