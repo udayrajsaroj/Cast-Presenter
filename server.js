@@ -19,7 +19,6 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 const app = express();
 const server = http.createServer(app);
 
-// Increased timeout for large uploads/processing
 server.timeout = 300000;
 server.keepAliveTimeout = 300000;
 
@@ -60,7 +59,57 @@ const BIBLE_THEMES = [
   { id: "clouds-1", label: "Clouds", image: "/backgrounds/clouds-1.jpg" },
 ];
 
-// --- Helper Functions ---
+// --- Load Local Bible Databases ---
+let bibleEnglish = {};
+let bibleHindi = {};
+
+try {
+  bibleEnglish = JSON.parse(fs.readFileSync(path.join(__dirname, "bible_en.json"), "utf8"));
+  bibleHindi = JSON.parse(fs.readFileSync(path.join(__dirname, "bible_hi.json"), "utf8"));
+  console.log("Local Bible databases loaded successfully!");
+} catch (err) {
+  console.error("Error loading local Bible JSON files. Make sure bible_en.json and bible_hi.json exist.", err);
+}
+
+// Comprehensive Book Name Resolver for Abbreviations
+const BOOK_MAP = {
+  "gen": "Genesis", "ex": "Exodus", "exo": "Exodus", "lev": "Leviticus", "num": "Numbers", "deut": "Deuteronomy",
+  "josh": "Joshua", "judg": "Judges", "ruth": "Ruth", "1sam": "1 Samuel", "2sam": "2 Samuel", "1kgs": "1 Kings",
+  "2kgs": "2 Kings", "1chr": "1 Chronicles", "2chr": "2 Chronicles", "ezra": "Ezra", "neh": "Nehemiah", "esth": "Esther",
+  "job": "Job", "ps": "Psalms", "psa": "Psalms", "prov": "Proverbs", "ecc": "Ecclesiastes", "song": "Song of Solomon",
+  "isa": "Isaiah", "jer": "Jeremiah", "lam": "Lamentations", "ezek": "Ezekiel", "dan": "Daniel", "hos": "Hosea",
+  "joel": "Joel", "amos": "Amos", "obad": "Obadiah", "jonah": "Jonah", "mic": "Micah", "nah": "Nahum", "hab": "Habakkuk",
+  "zeph": "Zephaniah", "hag": "Haggai", "zech": "Zechariah", "mal": "Malachi", "matt": "Matthew", "mt": "Matthew",
+  "mark": "Mark", "mk": "Mark", "luke": "Luke", "lk": "Luke", "john": "John", "jn": "John", "acts": "Acts",
+  "rom": "Romans", "1cor": "1 Corinthians", "2cor": "2 Corinthians", "gal": "Galatians", "eph": "Ephesians",
+  "phil": "Philippians", "col": "Colossians", "1thess": "1 Thessalonians", "2thess": "2 Thessalonians",
+  "1tim": "1 Timothy", "2tim": "2 Timothy", "titus": "Titus", "phlm": "Philemon", "heb": "Hebrews", "jas": "James",
+  "1pet": "1 Peter", "2pet": "2 Peter", "1jn": "1 John", "2jn": "2 John", "3jn": "3 John", "jude": "Jude", "rev": "Revelation"
+};
+
+function getStandardBookName(inputName) {
+  const clean = inputName.toLowerCase().replace(/\s+/g, "");
+  if (BOOK_MAP[clean]) return BOOK_MAP[clean];
+  
+  for (const standardName of Object.keys(bibleEnglish)) {
+    if (standardName.toLowerCase() === inputName.toLowerCase().trim()) {
+      return standardName;
+    }
+  }
+  return inputName;
+}
+
+function localParseReference(input) {
+  const s = (input || "").trim();
+  if (!s) return null;
+  const m = s.match(/^((?:\d\s*)?[a-zA-Z]+(?:\s+[a-zA-Z]+)?)\s+(\d+)\s*:\s*(\d+)/i);
+  if (!m) return null;
+  return {
+    book: m[1].trim(),
+    chapter: m[2],
+    verse: m[3]
+  };
+}
 
 function getLanIp() {
   const nets = os.networkInterfaces();
@@ -74,59 +123,7 @@ function getLanIp() {
   return "127.0.0.1";
 }
 
-function normalizeBibleRef(raw) {
-  try {
-    return decodeURIComponent(String(raw || "")).trim().replace(/\s+/g, " ");
-  } catch (_e) {
-    return String(raw || "").trim().replace(/\s+/g, " ");
-  }
-}
-
-// --- Bible Logic (Bilingual) ---
-
-/**
- * Fetches both English (KJV) and Hindi translations concurrently
- */
-async function fetchBilingualBible(ref) {
-  const clean = normalizeBibleRef(ref);
-  if (!clean) throw new Error("Reference is required");
-
-  // Fetch both English and Hindi concurrently
-  const [enRes, hiRes] = await Promise.all([
-    fetch(`https://bible-api.com/${encodeURIComponent(clean)}?translation=kjv`),
-    fetch(`https://bible-api.com/${encodeURIComponent(clean)}?translation=hindi`),
-  ]);
-
-  if (!enRes.ok) throw new Error("Verse not found (English lookup failed)");
-  
-  const enData = await enRes.json();
-  let hiText = "";
-
-  // Graceful fallback if Hindi translation fails or is missing
-  if (hiRes.ok) {
-    const hiData = await hiRes.json();
-    hiText = hiData.text || "";
-  } else {
-    console.warn(`Hindi translation not found for ${clean}, using fallback.`);
-    hiText = "Hindi translation not available for this verse."; // Or use a blank string
-  }
-
-  return {
-    reference: enData.reference,
-    enText: enData.text.trim(),
-    hiText: hiText.trim(),
-  };
-}
-
-// --- Document Processing ---
-
-async function getPdfPageCount(filePath) {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const data = new Uint8Array(fs.readFileSync(filePath));
-  const pdf = await pdfjs.getDocument({ data }).promise;
-  return pdf.numPages;
-}
-
+// --- PPTX Slide Extractor Function ---
 async function extractPptxSlides(filePath) {
   const buffer = fs.readFileSync(filePath);
   const zip = await JSZip.loadAsync(buffer);
@@ -195,17 +192,6 @@ async function extractPptxSlides(filePath) {
   return slides;
 }
 
-function broadcastPage() {
-  io.emit("change-page", {
-    page: presentation.currentPage,
-    totalPages: presentation.totalPages,
-    type: presentation.type,
-    filename: presentation.filename,
-    slideImages: presentation.slideImages,
-    documentUrl: presentation.storedPath ? "/api/document/file" : null,
-  });
-}
-
 // --- API Routes ---
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
@@ -226,32 +212,61 @@ app.get("/api/info", (_req, res) => {
 app.get("/api/themes", (_req, res) => res.json({ themes: BIBLE_THEMES }));
 
 /**
- * NEW: Bilingual Bible Endpoint
- * Fetches English and Hindi text for a given reference.
+ * 100% Local Offline Bilingual Bible Endpoint
  */
-app.get("/api/bible/bilingual/:ref(*)", async (req, res) => {
+app.get("/api/bible/bilingual/:ref(*)", (req, res) => {
   try {
-    const data = await fetchBilingualBible(req.params.ref);
-    return res.json(data);
+    const rawRef = decodeURIComponent(req.params.ref).trim();
+    const parsed = localParseReference(rawRef);
+    
+    if (!parsed) {
+      return res.status(400).json({ error: "Invalid reference format. Use e.g., 'Joshua 3:16'" });
+    }
+
+    const standardBook = getStandardBookName(parsed.book);
+    const ch = parsed.chapter;
+    const v = parsed.verse;
+
+    let enText = "";
+    if (bibleEnglish[standardBook] && bibleEnglish[standardBook][ch] && bibleEnglish[standardBook][ch][v]) {
+      enText = bibleEnglish[standardBook][ch][v];
+    } else {
+      return res.status(404).json({ error: `Verse not found in English Database (${standardBook} ${ch}:${v})` });
+    }
+
+    let hiText = "";
+    if (bibleHindi[standardBook] && bibleHindi[standardBook][ch] && bibleHindi[standardBook][ch][v]) {
+      hiText = bibleHindi[standardBook][ch][v];
+    } else {
+      console.warn(`Hindi text missing locally for ${standardBook} ${ch}:${v}`);
+      hiText = ""; 
+    }
+
+    return res.json({
+      reference: `${standardBook} ${ch}:${v}`,
+      enText: enText.trim(),
+      hiText: hiText.trim(),
+    });
   } catch (err) {
-    return res.status(500).json({ error: err.message || "Bible lookup failed" });
+    return res.status(500).json({ error: err.message || "Local Lookup failed" });
   }
 });
 
-app.get("/api/bible/:ref(*)", async (req, res) => {
-  // Kept for backwards compatibility, though Mobile App will now use /bilingual
+app.get("/api/bible/chapter/:ref(*)", (req, res) => {
   try {
-    const clean = normalizeBibleRef(req.params.ref);
-    const response = await fetch(`https://bible-api.com/${encodeURIComponent(clean)}?translation=kjv`);
-    if (!response.ok) throw new Error("Verse not found");
-    const data = await response.json();
-    return res.json({
-      reference: data.reference,
-      text: data.text,
-      verses: data.verses,
-    });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
+    const rawRef = decodeURIComponent(req.params.ref).trim();
+    const parts = rawRef.split(" ");
+    const chapter = parts.pop();
+    const bookInput = parts.join(" ");
+    const standardBook = getStandardBookName(bookInput);
+
+    if (bibleEnglish[standardBook] && bibleEnglish[standardBook][chapter]) {
+      const verseCount = Object.keys(bibleEnglish[standardBook][chapter]).length;
+      return res.json({ verseCount });
+    }
+    return res.json({ verseCount: 0 });
+  } catch (_e) {
+    return res.json({ verseCount: 0 });
   }
 });
 
@@ -276,7 +291,6 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
       return res.status(400).json({ error: "Only PDF, PPTX, and video are supported" });
     }
 
-    // Cleanup old file
     if (presentation.storedPath && fs.existsSync(presentation.storedPath)) {
       try { fs.unlinkSync(presentation.storedPath); } catch (_e) {}
     }
@@ -290,11 +304,15 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 
     if (isPdf) {
       presentation.type = "pdf";
-      presentation.totalPages = await getPdfPageCount(req.file.path);
+      const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+      const data = new Uint8Array(fs.readFileSync(req.file.path));
+      const pdf = await pdfjs.getDocument({ data }).promise;
+      presentation.totalPages = pdf.numPages;
     } else if (isPptx) {
       presentation.type = "pptx";
+      // PPTX Extract logic is back!
       const slides = await extractPptxSlides(req.file.path);
-      presentation.slideImages = slides;
+      presentation.slideImages = slides; 
       presentation.totalPages = Math.max(1, slides.length);
     } else {
       presentation.type = "video";
@@ -314,7 +332,7 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     };
 
     io.emit("upload-document", payload);
-    broadcastPage();
+    io.emit("change-page", { page: presentation.currentPage, totalPages: presentation.totalPages, type: presentation.type, filename: presentation.filename, slideImages: presentation.slideImages, documentUrl: "/api/document/file" });
     return res.json(payload);
   } catch (err) {
     console.error(err);
@@ -323,7 +341,6 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
 });
 
 // --- Socket Logic ---
-
 io.on("connection", (socket) => {
   socket.on("join-room", (data, ack) => {
     const role = data && data.role ? data.role : "viewer";
@@ -343,21 +360,12 @@ io.on("connection", (socket) => {
   });
 
   socket.on("show-verse", (data) => {
-    // Data now expected to contain: reference, enText, hiText, theme, backgroundUrl
-    const backgroundUrl = data?.backgroundUrl || "/backgrounds/nature-1.jpg";
     io.emit("show-verse", {
       reference: data?.reference || "",
       enText: data?.enText || "",
       hiText: data?.hiText || "",
       theme: data?.theme || "nature-1",
-      backgroundUrl,
-    });
-  });
-
-  socket.on("video-control", (data) => {
-    io.emit("video-control", {
-      action: data?.action || "play",
-      time: typeof data?.time === "number" ? data.time : undefined,
+      backgroundUrl: data?.backgroundUrl || "/backgrounds/nature-1.jpg",
     });
   });
 
@@ -366,25 +374,11 @@ io.on("connection", (socket) => {
     if (!Number.isFinite(page) || page < 1) return;
     const max = Math.max(1, presentation.totalPages);
     presentation.currentPage = Math.min(Math.max(1, page), max);
-    broadcastPage();
-  });
-
-  socket.on("upload-document", (data) => {
-    if (!data || !data.filename) return;
-    io.emit("upload-document", {
-      id: data.id || presentation.id,
-      filename: data.filename,
-      type: data.type || presentation.type,
-      totalPages: data.totalPages || presentation.totalPages,
-      currentPage: data.currentPage || 1,
-      documentUrl: data.documentUrl || "/api/document/file",
-      slideImages: data.slideImages || presentation.slideImages,
-    });
-    broadcastPage();
+    io.emit("change-page", { page: presentation.currentPage, totalPages: presentation.totalPages, type: presentation.type, filename: presentation.filename, slideImages: presentation.slideImages, documentUrl: presentation.storedPath ? "/api/document/file" : null });
   });
 });
 
 server.listen(PORT, "0.0.0.0", () => {
   const ip = getLanIp();
-  console.log(`Cast server running: http://${ip}:${PORT}`);
+  console.log(`Cast server running locally: http://${ip}:${PORT}`);
 });
