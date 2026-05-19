@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -276,6 +277,20 @@ export default function App() {
   // ✅ MERGED: Font Size Scale State (from Doc 4)
   const [verseFontSizeScale, setVerseFontSizeScale] = useState(1.0);
 
+  // Setup screen state
+  const [setupDone, setSetupDone] = useState(false);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (setupDone) {
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [setupDone, fadeAnim]);
+
   const previewHtml = useMemo(
     () =>
       buildPreviewHtml({
@@ -369,6 +384,7 @@ export default function App() {
     setServerUrl(base);
     connectSocket(base);
     await refreshServerInfo(base);
+    setSetupDone(true);
   }, [serverInput, connectSocket, refreshServerInfo]);
 
   useEffect(() => {
@@ -572,33 +588,34 @@ export default function App() {
           : name.toLowerCase().match(/\.(mp4|mov|webm|m4v)$/)
           ? "video/mp4"
           : "application/pdf");
-      if (Platform.OS === "android" && uploadUri) {
+      // Android par content:// URI ko file:// mein convert karo
+      if (Platform.OS === "android" && uploadUri && !uploadUri.startsWith("file://")) {
         const dest = `${FileSystem.cacheDirectory}${name}`;
         await FileSystem.copyAsync({ from: uploadUri, to: dest });
         uploadUri = dest;
       }
-      const uploadResult = await FileSystem.uploadAsync(
-        `${serverUrl}/api/upload`,
-        uploadUri,
-        {
-          httpMethod: "POST",
-          uploadType: FileSystem.UploadType.MULTIPART,
-          fieldName: "file",
-          mimeType,
-          headers: { Accept: "application/json" },
-        }
-      );
-      if (uploadResult.status < 200 || uploadResult.status >= 300) {
+
+      // fetch + FormData — FileSystem.uploadAsync se zyada reliable hai Android par
+      const formData = new FormData();
+      formData.append("file", {
+        uri: uploadUri,
+        name,
+        type: mimeType,
+      });
+      const fetchResult = await fetch(`${serverUrl}/api/upload`, {
+        method: "POST",
+        headers: { Accept: "application/json" },
+        body: formData,
+      });
+      if (!fetchResult.ok) {
         let message = "Upload failed";
         try {
-          const errJson = JSON.parse(uploadResult.body);
+          const errJson = await fetchResult.json();
           message = errJson.error || message;
-        } catch (_e) {
-          if (uploadResult.body) message = uploadResult.body;
-        }
+        } catch (_e) {}
         throw new Error(message);
       }
-      const json = JSON.parse(uploadResult.body);
+      const json = await fetchResult.json();
       setFilename(json.filename || name);
       setDocType(json.type || null);
       setTotalPages(json.totalPages || 0);
@@ -634,44 +651,70 @@ export default function App() {
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Top Bar */}
-        <View style={styles.topBar}>
-          <Text style={styles.topTitle}>Open on your TV</Text>
-          <Text style={styles.topUrl} selectable>{topCastLine}</Text>
-          <Text style={styles.topHint}>
-            Phone IP: {phoneIp} · Connection: {connected ? "Connected" : "Disconnected"}
-          </Text>
-        </View>
+        {/* ===== SETUP SCREEN ===== */}
+        {!setupDone && (
+          <View style={styles.setupScreen}>
+            <View style={styles.setupLogo}>
+              <Text style={styles.setupLogoIcon}>✝</Text>
+              <Text style={styles.setupAppName}>CastWord</Text>
+              <Text style={styles.setupTagline}>Church Presentation Controller</Text>
+            </View>
+            <View style={styles.setupCard}>
+              <Text style={styles.setupLabel}>Server URL</Text>
+              <TextInput
+                style={styles.setupInput}
+                placeholder="http://192.168.1.x:3000"
+                placeholderTextColor="#334155"
+                autoCapitalize="none"
+                keyboardType="url"
+                value={serverInput}
+                onChangeText={setServerInput}
+                onSubmitEditing={saveAndConnect}
+                returnKeyType="go"
+              />
+              <TouchableOpacity style={styles.setupBtn} onPress={saveAndConnect}>
+                <Text style={styles.setupBtnText}>CONNECT  →</Text>
+              </TouchableOpacity>
+              <Text style={styles.setupHint}>
+                Run the server on your PC/Termux and paste its address above
+              </Text>
+            </View>
+          </View>
+        )}
 
-        {/* Server URL Card */}
-        <View style={styles.card}>
-          <Text style={styles.label}>Cast server URL</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="http://192.168.1.x:3000"
-            placeholderTextColor="#64748b"
-            autoCapitalize="none"
-            value={serverInput}
-            onChangeText={setServerInput}
-          />
-          <TouchableOpacity style={styles.secondaryBtn} onPress={saveAndConnect}>
-            <Text style={styles.secondaryBtnText}>Connect</Text>
-          </TouchableOpacity>
-        </View>
+        {/* ===== MAIN APP (after setup) ===== */}
+        {setupDone && (
+          <Animated.View style={{ opacity: fadeAnim }}>
+            {/* Status Bar */}
+            <TouchableOpacity
+              style={styles.statusBar}
+              onPress={() => setSetupDone(false)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.topBadge}>
+                <View style={[styles.topBadgeDot, !connected && styles.topBadgeDotOff]} />
+                <Text style={styles.statusBarText} numberOfLines={1}>{topCastLine}</Text>
+              </View>
+              <Text style={styles.statusBarEdit}>✎</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        )}
 
+        {setupDone && (
+          <Animated.View style={{ opacity: fadeAnim }}>
         {/* Tab Row */}
         <View style={styles.tabRow}>
           <TouchableOpacity
             style={[styles.tabBtn, screen === "present" && styles.tabBtnActive]}
             onPress={() => setScreen("present")}
           >
-            <Text style={styles.tabBtnText}>Present</Text>
+            <Text style={[styles.tabBtnText, screen === "present" && styles.tabBtnTextActive]}>Present</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tabBtn, screen === "bible" && styles.tabBtnActive]}
             onPress={() => setScreen("bible")}
           >
-            <Text style={styles.tabBtnText}>Bible</Text>
+            <Text style={[styles.tabBtnText, screen === "bible" && styles.tabBtnTextActive]}>Bible</Text>
           </TouchableOpacity>
         </View>
 
@@ -854,7 +897,7 @@ export default function App() {
                       selectedTheme === t.id && styles.themeChipActive,
                     ]}
                   >
-                    <Text style={styles.themeChipText}>{t.label || t.id}</Text>
+                    <Text style={[styles.themeChipText, selectedTheme === t.id && styles.themeChipTextActive]}>{t.label || t.id}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -897,6 +940,8 @@ export default function App() {
             </View>
           </View>
         )}
+          </Animated.View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -904,217 +949,413 @@ export default function App() {
 
 // =============================================================================
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: "#0f172a" },
-  container: { padding: 16, paddingBottom: 40 },
+  // --- Layout ---
+  safe: { flex: 1, backgroundColor: "#0a0f1e" },
+  container: { padding: 20, paddingBottom: 48 },
+
+  // --- Top Bar ---
   topBar: {
-    backgroundColor: "#1e293b",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    backgroundColor: "#111827",
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#1e3a5f",
   },
-  topTitle: { color: "#94a3b8", fontSize: 13, marginBottom: 6 },
-  topUrl: { color: "#38bdf8", fontSize: 16, fontWeight: "700" },
-  topHint: { color: "#64748b", fontSize: 11, marginTop: 8 },
+  topBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  topBadgeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: "#22c55e",
+    marginRight: 7,
+  },
+  topBadgeDotOff: {
+    backgroundColor: "#ef4444",
+  },
+  topTitle: { color: "#64748b", fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase", fontWeight: "600" },
+  topUrl: { color: "#38bdf8", fontSize: 17, fontWeight: "800", letterSpacing: 0.3, marginBottom: 4 },
+  topHint: { color: "#334155", fontSize: 11, marginTop: 4 },
+
+  // --- Card ---
   card: {
-    backgroundColor: "#1e293b",
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: "#111827",
+    borderRadius: 20,
+    padding: 20,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#1e293b",
   },
-  label: { color: "#cbd5e1", marginBottom: 8, fontSize: 14, fontWeight: "600" },
+  label: {
+    color: "#94a3b8",
+    marginBottom: 10,
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+  },
+
+  // --- Inputs ---
   input: {
     backgroundColor: "#0f172a",
-    color: "#f8fafc",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: "#334155",
-    marginBottom: 12,
+    color: "#f1f5f9",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderWidth: 1.5,
+    borderColor: "#1e293b",
+    marginBottom: 14,
     fontSize: 15,
+    letterSpacing: 0.2,
   },
   searchRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
   searchInput: {
     flex: 1,
     backgroundColor: "#0f172a",
-    color: "#f8fafc",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: "#38bdf8",
+    color: "#f1f5f9",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderWidth: 1.5,
+    borderColor: "#1d4ed8",
     fontSize: 15,
     marginRight: 8,
+    letterSpacing: 0.2,
   },
   clearBtn: { padding: 10, justifyContent: "center" },
-  clearBtnText: { color: "#94a3b8", fontSize: 18, fontWeight: "bold" },
+  clearBtnText: { color: "#475569", fontSize: 17, fontWeight: "bold" },
+
+  // --- Buttons ---
   primaryBtn: {
-    backgroundColor: "#2563eb",
-    borderRadius: 12,
-    paddingVertical: 14,
+    backgroundColor: "#1d4ed8",
+    borderRadius: 14,
+    paddingVertical: 16,
     alignItems: "center",
     marginBottom: 12,
+    shadowColor: "#1d4ed8",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 6,
   },
-  primaryBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  primaryBtnText: { color: "#fff", fontSize: 14, fontWeight: "800", letterSpacing: 1 },
   secondaryBtn: {
-    backgroundColor: "#334155",
-    borderRadius: 8,
-    paddingVertical: 11,
-    alignItems: "center",
-  },
-  secondaryBtnText: { color: "#f8fafc", fontWeight: "600", fontSize: 14 },
-  disabled: { opacity: 0.45 },
-  fileName: { color: "#e2e8f0", marginBottom: 12, fontSize: 13 },
-  previewBox: {
-    height: 220,
-    backgroundColor: "#020617",
+    backgroundColor: "#1e293b",
     borderRadius: 12,
-    overflow: "hidden",
-    marginBottom: 20,
+    paddingVertical: 13,
+    alignItems: "center",
     borderWidth: 1,
     borderColor: "#334155",
   },
+  secondaryBtnText: { color: "#cbd5e1", fontWeight: "600", fontSize: 14 },
+  disabled: { opacity: 0.35 },
+
+  // --- File name ---
+  fileName: {
+    color: "#475569",
+    marginBottom: 14,
+    fontSize: 12,
+    textAlign: "center",
+    letterSpacing: 0.3,
+  },
+
+  // --- Preview Box ---
+  previewBox: {
+    height: 210,
+    backgroundColor: "#020617",
+    borderRadius: 16,
+    overflow: "hidden",
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#1e293b",
+  },
   webview: { flex: 1, backgroundColor: "#000" },
   previewPlaceholder: {
-    color: "#64748b",
+    color: "#334155",
     textAlign: "center",
-    marginTop: 90,
-    fontSize: 14,
+    marginTop: 85,
+    fontSize: 13,
+    letterSpacing: 0.5,
   },
+
+  // --- Nav Controls ---
   controls: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
+    gap: 10,
     marginTop: 8,
   },
   navBtn: {
     flex: 1,
-    backgroundColor: "#16a34a",
-    borderRadius: 12,
+    backgroundColor: "#14532d",
+    borderRadius: 14,
     paddingVertical: 18,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#166534",
   },
-  navBtnText: { color: "#fff", fontSize: 14, fontWeight: "800" },
+  navBtnText: { color: "#86efac", fontSize: 12, fontWeight: "800", letterSpacing: 1.2 },
   pageIndicator: {
-    color: "#f8fafc",
-    fontSize: 15,
+    color: "#94a3b8",
+    fontSize: 14,
     fontWeight: "700",
-    minWidth: 72,
+    minWidth: 60,
     textAlign: "center",
   },
-  tabRow: { flexDirection: "row", marginBottom: 16, gap: 8 },
+
+  // --- Tabs ---
+  tabRow: {
+    flexDirection: "row",
+    marginBottom: 16,
+    gap: 8,
+    backgroundColor: "#111827",
+    borderRadius: 16,
+    padding: 5,
+    borderWidth: 1,
+    borderColor: "#1e293b",
+  },
   tabBtn: {
     flex: 1,
-    paddingVertical: 11,
-    borderRadius: 8,
-    backgroundColor: "#334155",
+    paddingVertical: 12,
+    borderRadius: 12,
     alignItems: "center",
   },
-  tabBtnActive: { backgroundColor: "#2563eb" },
-  tabBtnText: { color: "#fff", fontWeight: "700", fontSize: 14 },
-  themeScroll: { marginBottom: 12, maxHeight: 48 },
+  tabBtnActive: {
+    backgroundColor: "#1d4ed8",
+    shadowColor: "#1d4ed8",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  tabBtnText: { color: "#64748b", fontWeight: "700", fontSize: 13, letterSpacing: 0.5 },
+  tabBtnTextActive: { color: "#fff" },
+
+  // --- Themes ---
+  themeScroll: { marginBottom: 14, maxHeight: 50 },
   themeChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 20,
-    backgroundColor: "#334155",
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 24,
+    backgroundColor: "#1e293b",
     marginRight: 8,
     alignSelf: "flex-start",
-  },
-  themeChipActive: { backgroundColor: "#2563eb" },
-  themeChipText: { color: "#fff", fontWeight: "600", fontSize: 13 },
-  themeHint: { color: "#94a3b8", fontSize: 12, marginBottom: 12 },
-  suggestBox: {
-    backgroundColor: "#1e293b",
-    borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#38bdf8",
+    borderColor: "#334155",
+  },
+  themeChipActive: {
+    backgroundColor: "#1e3a8a",
+    borderColor: "#3b82f6",
+  },
+  themeChipText: { color: "#94a3b8", fontWeight: "600", fontSize: 13 },
+  themeChipTextActive: { color: "#bfdbfe" },
+  themeHint: { color: "#334155", fontSize: 12, marginBottom: 12 },
+
+  // --- Suggestions ---
+  suggestBox: {
+    backgroundColor: "#0f172a",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#1d4ed8",
     marginBottom: 12,
     maxHeight: 200,
     zIndex: 10,
-    elevation: 5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    elevation: 8,
+    shadowColor: "#1d4ed8",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
   },
   suggestItem: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 13,
+    paddingHorizontal: 18,
     borderBottomWidth: 1,
-    borderBottomColor: "#334155",
-    justifyContent: "center",
+    borderBottomColor: "#1e293b",
   },
-  suggestText: { color: "#e2e8f0", fontSize: 15 },
+  suggestText: { color: "#cbd5e1", fontSize: 14, letterSpacing: 0.2 },
+
+  // --- Verse Preview ---
   versePreviewBox: {
-    backgroundColor: "#0f172a",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    backgroundColor: "#0c1322",
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 14,
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: "#1e3a5f",
     alignItems: "flex-start",
-    justifyContent: "flex-start",
-    minHeight: 150,
+    minHeight: 140,
     flexShrink: 1,
   },
   versePreviewRef: {
-    color: "#facc15",
-    fontSize: 18,
+    color: "#fbbf24",
+    fontSize: 13,
     fontWeight: "800",
-    marginBottom: 12,
+    marginBottom: 14,
     textAlign: "center",
     width: "100%",
-    letterSpacing: 1,
+    letterSpacing: 2,
     textTransform: "uppercase",
   },
   versePreviewText: {
-    color: "#f1f5f9",
-    fontSize: 16,
-    lineHeight: 24,
+    color: "#e2e8f0",
+    fontSize: 15,
+    lineHeight: 26,
     fontFamily: Platform.OS === "ios" ? "Georgia" : "serif",
     textAlign: "justify",
     width: "100%",
     flexShrink: 1,
   },
   hindiContainer: {
-    marginTop: 0,
     width: "100%",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 14,
   },
   dividerLine: {
     height: 1,
-    width: "50%",
-    backgroundColor: "#334155",
-    marginTop: 12,
+    width: "40%",
+    backgroundColor: "#1e3a5f",
+    marginTop: 14,
   },
   hindiText: {
     fontFamily: Platform.OS === "ios" ? "Devanagari Sangam MN" : "serif",
-    color: "#cbd5e1",
-    fontStyle: "italic",
+    color: "#93c5fd",
     fontSize: 15,
+    lineHeight: 26,
   },
 
-  // ✅ MERGED: Font Size Control Styles (from Doc 4)
+  // --- Font Size Controls ---
   fontSizeControls: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     backgroundColor: "#0f172a",
-    borderRadius: 8,
-    padding: 8,
-    marginBottom: 12,
+    borderRadius: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "#1e293b",
+  },
+  sizeBtn: {
+    backgroundColor: "#1e293b",
+    paddingHorizontal: 22,
+    paddingVertical: 11,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: "#334155",
   },
-  sizeBtn: {
-    backgroundColor: "#334155",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 6,
+  sizeBtnText: { color: "#94a3b8", fontSize: 15, fontWeight: "800" },
+  sizeDisplay: { color: "#38bdf8", fontSize: 15, fontWeight: "800", letterSpacing: 1 },
+
+  // --- Setup Screen ---
+  setupScreen: {
+    flex: 1,
+    minHeight: 680,
+    justifyContent: "center",
+    paddingTop: 60,
   },
-  sizeBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
-  sizeDisplay: { color: "#f8fafc", fontSize: 16, fontWeight: "800" },
+  setupLogo: {
+    alignItems: "center",
+    marginBottom: 48,
+  },
+  setupLogoIcon: {
+    fontSize: 48,
+    color: "#3b82f6",
+    marginBottom: 12,
+  },
+  setupAppName: {
+    fontSize: 32,
+    fontWeight: "800",
+    color: "#f1f5f9",
+    letterSpacing: 1,
+    marginBottom: 6,
+  },
+  setupTagline: {
+    fontSize: 13,
+    color: "#475569",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+  },
+  setupCard: {
+    backgroundColor: "#111827",
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: "#1e293b",
+  },
+  setupLabel: {
+    color: "#64748b",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    marginBottom: 12,
+  },
+  setupInput: {
+    backgroundColor: "#0a0f1e",
+    color: "#f1f5f9",
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    borderWidth: 1.5,
+    borderColor: "#1e3a5f",
+    fontSize: 16,
+    marginBottom: 16,
+    letterSpacing: 0.3,
+  },
+  setupBtn: {
+    backgroundColor: "#1d4ed8",
+    borderRadius: 14,
+    paddingVertical: 18,
+    alignItems: "center",
+    marginBottom: 16,
+    shadowColor: "#1d4ed8",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  setupBtnText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 2,
+  },
+  setupHint: {
+    color: "#334155",
+    fontSize: 12,
+    textAlign: "center",
+    lineHeight: 18,
+  },
+
+  // --- Status Bar (collapsed connection info) ---
+  statusBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#111827",
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#1e293b",
+  },
+  statusBarText: {
+    color: "#38bdf8",
+    fontSize: 13,
+    fontWeight: "700",
+    marginLeft: 8,
+    flex: 1,
+  },
+  statusBarEdit: {
+    color: "#334155",
+    fontSize: 16,
+    marginLeft: 8,
+  },
 });

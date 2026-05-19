@@ -16,6 +16,9 @@
       }
     },
     "android": {
+      "config": {
+        "usesCleartextTraffic": true
+      },
       "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#0f172a"
