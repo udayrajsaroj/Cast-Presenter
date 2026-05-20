@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  KeyboardAvoidingView,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -14,7 +15,6 @@ import {
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as DocumentPicker from "expo-document-picker";
-// FIX 1: Correct dual import — FileSystem for cacheDirectory, copyAsync from legacy
 import * as FileSystem from "expo-file-system";
 import { copyAsync } from "expo-file-system/legacy";
 import * as Network from "expo-network";
@@ -24,7 +24,6 @@ import { WebView } from "react-native-webview";
 
 const STORAGE_KEY = "CAST_SERVER_URL";
 
-// COMPREHENSIVE LIST OF ALL 66 BIBLE BOOKS WITH ABBREVIATIONS
 const BIBLE_BOOKS = [
   { name: "Genesis", abbr: ["gen", "ge", "gn"] },
   { name: "Exodus", abbr: ["ex", "exo", "exod"] },
@@ -140,10 +139,8 @@ function formatReference({ book, chapter, verse }) {
 function getSuggestions(query) {
   const q = (query || "").trim().toLowerCase();
   if (!q) return [];
-
   const out = [];
   const parsed = parseReference(query);
-
   if (parsed) {
     out.push(formatReference(parsed));
     if (!parsed.endVerse) {
@@ -154,7 +151,6 @@ function getSuggestions(query) {
     }
     return [...new Set(out)].slice(0, 8);
   }
-
   for (const b of BIBLE_BOOKS) {
     const name = b.name.toLowerCase();
     if (
@@ -165,21 +161,19 @@ function getSuggestions(query) {
       out.push(`${b.name} 3:16`);
     }
   }
-
   for (const p of POPULAR_VERSES) {
     if (p.toLowerCase().includes(q)) out.push(p);
   }
-
   return [...new Set(out)].slice(0, 8);
 }
 
 // --- Preview HTML Generator ---
 function buildPreviewHtml({ baseUrl, docType, page, totalPages, slideImages }) {
-  const safeBase = JSON.stringify(baseUrl);
-  const safeType = JSON.stringify(docType || "");
+  const safeBase   = JSON.stringify(baseUrl);
+  const safeType   = JSON.stringify(docType || "");
   const safeSlides = JSON.stringify(slideImages || []);
-  const pageNum = Number(page) || 1;
-  const total = Number(totalPages) || 1;
+  const pageNum    = Number(page) || 1;
+  const total      = Number(totalPages) || 1;
 
   return `<!DOCTYPE html>
 <html>
@@ -242,7 +236,7 @@ function buildPreviewHtml({ baseUrl, docType, page, totalPages, slideImages }) {
     else if (docType === "pdf") { showPdf().catch(() => { text.style.display = "block"; text.textContent = "PDF preview error"; }); }
     else if (docType === "video") { showVideo(); }
     else { showPptx(); }
-  </script>
+  <\/script>
 </body>
 </html>`;
 }
@@ -250,66 +244,47 @@ function buildPreviewHtml({ baseUrl, docType, page, totalPages, slideImages }) {
 // =============================================================================
 export default function App() {
   const socketRef = useRef(null);
-  const [serverInput, setServerInput] = useState("");
-  const [serverUrl, setServerUrl] = useState("");
-  const [phoneIp, setPhoneIp] = useState("");
-  const [connected, setConnected] = useState(false);
+  const [serverInput, setServerInput]   = useState("");
+  const [serverUrl, setServerUrl]       = useState("");
+  const [phoneIp, setPhoneIp]           = useState("");
+  const [connected, setConnected]       = useState(false);
 
-  // Presentation State
-  const [uploading, setUploading] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
-  const [docType, setDocType] = useState(null);
-  const [filename, setFilename] = useState("");
-  const [slideImages, setSlideImages] = useState([]);
-  const [castUrl, setCastUrl] = useState("");
+  const [uploading, setUploading]       = useState(false);
+  const [currentPage, setCurrentPage]   = useState(1);
+  const [totalPages, setTotalPages]     = useState(0);
+  const [docType, setDocType]           = useState(null);
+  const [filename, setFilename]         = useState("");
+  const [slideImages, setSlideImages]   = useState([]);
+  const [castUrl, setCastUrl]           = useState("");
 
-  // Bible State (Bilingual)
-  const [screen, setScreen] = useState("present");
-  const [verseQuery, setVerseQuery] = useState("");
-  const [suggestions, setSuggestions] = useState([]);
+  const [screen, setScreen]             = useState("present");
+  const [verseQuery, setVerseQuery]     = useState("");
+  const [suggestions, setSuggestions]   = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [themes, setThemes] = useState([]);
+  const [themes, setThemes]             = useState([]);
   const [selectedTheme, setSelectedTheme] = useState("nature-1");
   const [loadingVerse, setLoadingVerse] = useState(false);
-  const [currentRef, setCurrentRef] = useState(null);
+  const [currentRef, setCurrentRef]     = useState(null);
   const [versePreview, setVersePreview] = useState({ en: "", hi: "", reference: "" });
   const [chapterVerseCount, setChapterVerseCount] = useState(0);
-
-  // Font Size Scale State
   const [verseFontSizeScale, setVerseFontSizeScale] = useState(1.0);
 
-  // Setup screen state
   const [setupDone, setSetupDone] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (setupDone) {
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 400,
-        useNativeDriver: true,
-      }).start();
+      Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
     }
   }, [setupDone, fadeAnim]);
 
   const previewHtml = useMemo(
-    () =>
-      buildPreviewHtml({
-        baseUrl: serverUrl,
-        docType,
-        page: currentPage,
-        totalPages,
-        slideImages,
-      }),
+    () => buildPreviewHtml({ baseUrl: serverUrl, docType, page: currentPage, totalPages, slideImages }),
     [serverUrl, docType, currentPage, totalPages, slideImages]
   );
 
   useEffect(() => {
-    if (!showSuggestions) {
-      setSuggestions([]);
-      return;
-    }
+    if (!showSuggestions) { setSuggestions([]); return; }
     setSuggestions(getSuggestions(verseQuery));
   }, [verseQuery, showSuggestions]);
 
@@ -319,7 +294,6 @@ export default function App() {
       socketRef.current.disconnect();
       socketRef.current = null;
     }
-    // FIX 3: Use "polling" transport to avoid WebSocket blocking on Android/firewall
     const socket = io(base, {
       transports: ["polling"],
       reconnection: true,
@@ -329,7 +303,6 @@ export default function App() {
     });
     socketRef.current = socket;
     socket.on("connect", () => {
-      console.log("SUCCESS: Socket Connected!");
       setConnected(true);
       socket.emit("join-room", { role: "presenter" }, (ack) => {
         if (!ack) return;
@@ -341,15 +314,12 @@ export default function App() {
       });
     });
     socket.on("disconnect", () => setConnected(false));
-    socket.on("connect_error", (err) => {
-      console.log("ERROR: Connection failed!", err.message);
-      setConnected(false);
-    });
+    socket.on("connect_error", () => setConnected(false));
     socket.on("change-page", (payload) => {
-      if (payload.page) setCurrentPage(payload.page);
-      if (payload.totalPages) setTotalPages(payload.totalPages);
-      if (payload.type) setDocType(payload.type);
-      if (payload.filename) setFilename(payload.filename);
+      if (payload.page)        setCurrentPage(payload.page);
+      if (payload.totalPages)  setTotalPages(payload.totalPages);
+      if (payload.type)        setDocType(payload.type);
+      if (payload.filename)    setFilename(payload.filename);
       if (payload.slideImages) setSlideImages(payload.slideImages);
     });
     socket.on("upload-document", (payload) => {
@@ -363,17 +333,17 @@ export default function App() {
 
   const refreshServerInfo = useCallback(async (base) => {
     try {
-      const res = await fetch(`${base}/api/info`);
+      const res  = await fetch(`${base}/api/info`);
       const json = await res.json();
       if (json.displayUrl) setCastUrl(json.displayUrl);
     } catch (_e) {
-      setCastUrl(`${base}`);
+      setCastUrl(base);
     }
     try {
-      const themesRes = await fetch(`${base}/api/themes`);
-      if (themesRes.ok) {
-        const themesJson = await themesRes.json();
-        const list = themesJson.themes || [];
+      const tr   = await fetch(`${base}/api/themes`);
+      if (tr.ok) {
+        const tj   = await tr.json();
+        const list = tj.themes || [];
         setThemes(list);
         if (list.length > 0) setSelectedTheme(list[0].id);
       } else {
@@ -386,10 +356,7 @@ export default function App() {
 
   const saveAndConnect = useCallback(async () => {
     const base = normalizeBaseUrl(serverInput);
-    if (!base) {
-      Alert.alert("Server URL required", "Example: http://192.168.1.5:3000");
-      return;
-    }
+    if (!base) { Alert.alert("Server URL required", "Example: http://192.168.1.5:3000"); return; }
     await AsyncStorage.setItem(STORAGE_KEY, base);
     setServerUrl(base);
     connectSocket(base);
@@ -399,7 +366,7 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
-      const ip = await Network.getIpAddressAsync();
+      const ip   = await Network.getIpAddressAsync();
       setPhoneIp(ip || "0.0.0.0");
       const saved = await AsyncStorage.getItem(STORAGE_KEY);
       if (saved) {
@@ -411,9 +378,7 @@ export default function App() {
         setSetupDone(true);
       }
     })();
-    return () => {
-      if (socketRef.current) socketRef.current.disconnect();
-    };
+    return () => { if (socketRef.current) socketRef.current.disconnect(); };
   }, [connectSocket, refreshServerInfo]);
 
   const sendPageUpdate = useCallback(
@@ -434,9 +399,7 @@ export default function App() {
         if (!res.ok) return 0;
         const json = await res.json();
         return json.verseCount || (json.verses && json.verses.length) || 0;
-      } catch (_e) {
-        return 0;
-      }
+      } catch (_e) { return 0; }
     },
     [serverUrl]
   );
@@ -444,28 +407,27 @@ export default function App() {
   const emitVerseToTv = useCallback(
     (preview) => {
       if (!socketRef.current || !connected || !preview) return;
-      const theme = themes.find((t) => t.id === selectedTheme) || themes[0];
+      const theme  = themes.find((t) => t.id === selectedTheme) || themes[0];
       const bgPath = theme?.image || "/backgrounds/nature-1.jpg";
       socketRef.current.emit("show-verse", {
-        reference: preview.reference,
-        enText: preview.en,
-        hiText: preview.hi,
-        theme: selectedTheme,
+        reference:     preview.reference,
+        enText:        preview.en,
+        hiText:        preview.hi,
+        theme:         selectedTheme,
         backgroundUrl: `${serverUrl}${bgPath}`,
       });
     },
     [connected, themes, selectedTheme, serverUrl]
   );
 
-  // Font Size Adjustment
   const adjustFontSize = useCallback(
     (delta) => {
-      setVerseFontSizeScale((prevScale) => {
-        const newScale = Math.max(0.5, Math.min(2.5, parseFloat((prevScale + delta).toFixed(2))));
+      setVerseFontSizeScale((prev) => {
+        const next = Math.max(0.5, Math.min(2.5, parseFloat((prev + delta).toFixed(2))));
         if (socketRef.current && connected) {
-          socketRef.current.emit("change-font-size", { scale: newScale });
+          socketRef.current.emit("change-font-size", { scale: next });
         }
-        return newScale;
+        return next;
       });
     },
     [connected]
@@ -473,17 +435,14 @@ export default function App() {
 
   const loadVerse = useCallback(
     async (refText, options = { showOnTv: false }) => {
-      if (!serverUrl) {
-        Alert.alert("Connect first", "Enter server URL and tap Connect.");
-        return;
-      }
+      if (!serverUrl) { Alert.alert("Connect first", "Enter server URL and tap Connect."); return; }
       const q = (refText || verseQuery).trim();
       if (!q) return;
       setShowSuggestions(false);
       setLoadingVerse(true);
       try {
-        const ref = encodeURIComponent(q);
-        const res = await fetch(`${serverUrl}/api/bible/bilingual/${ref}`);
+        const ref  = encodeURIComponent(q);
+        const res  = await fetch(`${serverUrl}/api/bible/bilingual/${ref}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || "Verse not found");
 
@@ -494,13 +453,11 @@ export default function App() {
           setChapterVerseCount(count);
         }
 
-        let hiText = (json.hiText || "").replace(/\s+/g, " ").trim();
-        let enText = (json.enText || "").replace(/\s+/g, " ").trim();
-
+        const hiText  = (json.hiText || "").replace(/\s+/g, " ").trim();
+        const enText  = (json.enText || "").replace(/\s+/g, " ").trim();
         const preview = { reference: json.reference || q, en: enText, hi: hiText };
         setVersePreview(preview);
         setVerseQuery(json.reference || q);
-
         if (options.showOnTv) emitVerseToTv(preview);
       } catch (err) {
         Alert.alert("Bible", err.message || String(err));
@@ -512,38 +469,24 @@ export default function App() {
   );
 
   const selectSuggestion = useCallback(
-    (text) => {
-      setShowSuggestions(false);
-      setVerseQuery(text);
-      loadVerse(text, { showOnTv: false });
-    },
+    (text) => { setShowSuggestions(false); setVerseQuery(text); loadVerse(text, { showOnTv: false }); },
     [loadVerse]
   );
 
   const showVerseOnTv = useCallback(() => {
     setShowSuggestions(false);
-    if (versePreview) {
-      emitVerseToTv(versePreview);
-    } else {
-      loadVerse(verseQuery, { showOnTv: true });
-    }
+    if (versePreview?.reference) emitVerseToTv(versePreview);
+    else loadVerse(verseQuery, { showOnTv: true });
   }, [versePreview, verseQuery, loadVerse, emitVerseToTv]);
 
   const goVerseNext = useCallback(async () => {
     setShowSuggestions(false);
-    if (!currentRef) {
-      await loadVerse(verseQuery, { showOnTv: true });
-      return;
-    }
+    if (!currentRef) { await loadVerse(verseQuery, { showOnTv: true }); return; }
     let { book, chapter, verse } = currentRef;
     let max = chapterVerseCount;
-    if (!max) {
-      max = await fetchChapterVerseCount(book, chapter);
-      setChapterVerseCount(max);
-    }
+    if (!max) { max = await fetchChapterVerseCount(book, chapter); setChapterVerseCount(max); }
     if (max && verse >= max) {
-      chapter += 1;
-      verse = 1;
+      chapter += 1; verse = 1;
       const count = await fetchChapterVerseCount(book, chapter);
       setChapterVerseCount(count);
     } else {
@@ -557,10 +500,7 @@ export default function App() {
     if (!currentRef) return;
     let { book, chapter, verse } = currentRef;
     if (verse <= 1) {
-      if (chapter <= 1) {
-        Alert.alert("Bible", "Already at the start.");
-        return;
-      }
+      if (chapter <= 1) { Alert.alert("Bible", "Already at the start."); return; }
       chapter -= 1;
       const count = await fetchChapterVerseCount(book, chapter);
       setChapterVerseCount(count);
@@ -572,18 +512,13 @@ export default function App() {
   }, [currentRef, loadVerse, fetchChapterVerseCount]);
 
   const pickDocument = useCallback(async () => {
-    if (!serverUrl) {
-      Alert.alert("Connect first", "Enter cast server URL.");
-      return;
-    }
+    if (!serverUrl) { Alert.alert("Connect first", "Enter cast server URL."); return; }
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: [
           "application/pdf",
           "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-          "video/mp4",
-          "video/quicktime",
-          "video/webm",
+          "video/mp4", "video/quicktime", "video/webm",
         ],
         copyToCacheDirectory: true,
       });
@@ -591,35 +526,25 @@ export default function App() {
       const asset = result.assets[0];
       setUploading(true);
       let uploadUri = asset.uri;
-      const name = asset.name || "document";
-      const mimeType =
-        asset.mimeType ||
+      const name     = asset.name || "document";
+      const mimeType = asset.mimeType ||
         (name.toLowerCase().endsWith(".pptx")
           ? "application/vnd.openxmlformats-officedocument.presentationml.presentation"
           : name.toLowerCase().match(/\.(mp4|mov|webm|m4v)$/)
           ? "video/mp4"
           : "application/pdf");
 
-      // FIX 2 + FIX 4: Proper Android URI handling using imported copyAsync
       if (Platform.OS === "android" && uploadUri) {
-        // Agar content:// URI hai toh file:// mein copy karo
         if (!uploadUri.startsWith("file://")) {
           const dest = `${FileSystem.cacheDirectory}${name}`;
-          await copyAsync({ from: uploadUri, to: dest }); // FIX 2: named import use ho raha hai
+          await copyAsync({ from: uploadUri, to: dest });
           uploadUri = dest;
         }
-        // FIX 4: Ensure file:// prefix is present after copy
-        if (!uploadUri.startsWith("file://")) {
-          uploadUri = `file://${uploadUri}`;
-        }
+        if (!uploadUri.startsWith("file://")) uploadUri = `file://${uploadUri}`;
       }
 
       const formData = new FormData();
-      formData.append("file", {
-        uri: uploadUri,
-        name,
-        type: mimeType,
-      });
+      formData.append("file", { uri: uploadUri, name, type: mimeType });
       const fetchResult = await fetch(`${serverUrl}/api/upload`, {
         method: "POST",
         headers: { Accept: "application/json" },
@@ -627,10 +552,7 @@ export default function App() {
       });
       if (!fetchResult.ok) {
         let message = "Upload failed";
-        try {
-          const errJson = await fetchResult.json();
-          message = errJson.error || message;
-        } catch (_e) {}
+        try { const ej = await fetchResult.json(); message = ej.error || message; } catch (_e) {}
         throw new Error(message);
       }
       const json = await fetchResult.json();
@@ -650,14 +572,8 @@ export default function App() {
     }
   }, [serverUrl]);
 
-  const goPrev = () => {
-    if (currentPage <= 1) return;
-    sendPageUpdate(currentPage - 1);
-  };
-  const goNext = () => {
-    if (currentPage >= totalPages) return;
-    sendPageUpdate(currentPage + 1);
-  };
+  const goPrev = () => { if (currentPage > 1) sendPageUpdate(currentPage - 1); };
+  const goNext = () => { if (currentPage < totalPages) sendPageUpdate(currentPage + 1); };
 
   const topCastLine = castUrl || (serverUrl ? serverUrl : `http://${phoneIp}:3000`);
 
@@ -665,341 +581,315 @@ export default function App() {
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style="light" />
-      <ScrollView
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
+      {/* FIX 2: KeyboardAvoidingView — keyboard aane par content upar shift hoga */}
+      <KeyboardAvoidingView
+        style={styles.kav}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
-        {/* ===== SETUP SCREEN ===== */}
-        {!setupDone && (
-          <View style={styles.setupScreen}>
-            <View style={styles.setupLogo}>
-              <Text style={styles.setupLogoIcon}>✝</Text>
-              <Text style={styles.setupAppName}>CastWord</Text>
-              <Text style={styles.setupTagline}>Church Presentation Controller</Text>
-            </View>
-            <View style={styles.setupCard}>
-              <Text style={styles.setupLabel}>Server URL</Text>
-              <TextInput
-                style={styles.setupInput}
-                placeholder="http://192.168.1.x:3000"
-                placeholderTextColor="#334155"
-                autoCapitalize="none"
-                keyboardType="url"
-                value={serverInput}
-                onChangeText={setServerInput}
-                onSubmitEditing={saveAndConnect}
-                returnKeyType="go"
-              />
-              <TouchableOpacity style={styles.setupBtn} onPress={saveAndConnect}>
-                <Text style={styles.setupBtnText}>CONNECT  →</Text>
-              </TouchableOpacity>
-              <Text style={styles.setupHint}>
-                Run the server on your PC/Termux and paste its address above
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* ===== MAIN APP (after setup) ===== */}
-        {setupDone && (
-          <Animated.View style={{ opacity: fadeAnim }}>
-            {/* Status Bar */}
-            <TouchableOpacity
-              style={styles.statusBar}
-              onPress={() => setSetupDone(false)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.topBadge}>
-                <View style={[styles.topBadgeDot, !connected && styles.topBadgeDotOff]} />
-                <Text style={styles.statusBarText} numberOfLines={1}>{topCastLine}</Text>
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* ===== SETUP SCREEN ===== */}
+          {!setupDone && (
+            <View style={styles.setupScreen}>
+              <View style={styles.setupLogo}>
+                <Text style={styles.setupLogoIcon}>✝</Text>
+                <Text style={styles.setupAppName}>CastWord</Text>
+                <Text style={styles.setupTagline}>Church Presentation Controller</Text>
               </View>
-              <Text style={styles.statusBarEdit}>✎</Text>
-            </TouchableOpacity>
-          </Animated.View>
-        )}
-
-        {setupDone && (
-          <Animated.View style={{ opacity: fadeAnim }}>
-        {/* Tab Row */}
-        <View style={styles.tabRow}>
-          <TouchableOpacity
-            style={[styles.tabBtn, screen === "present" && styles.tabBtnActive]}
-            onPress={() => setScreen("present")}
-          >
-            <Text style={[styles.tabBtnText, screen === "present" && styles.tabBtnTextActive]}>Present</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tabBtn, screen === "bible" && styles.tabBtnActive]}
-            onPress={() => setScreen("bible")}
-          >
-            <Text style={[styles.tabBtnText, screen === "bible" && styles.tabBtnTextActive]}>Bible</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ========== PRESENT SCREEN ========== */}
-        {screen === "present" && (
-          <>
-            <TouchableOpacity
-              style={[styles.primaryBtn, uploading && styles.disabled]}
-              onPress={pickDocument}
-              disabled={uploading}
-            >
-              {uploading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.primaryBtnText}>Pick PDF, PPTX, or Video</Text>
-              )}
-            </TouchableOpacity>
-
-            {filename ? (
-              <Text style={styles.fileName}>
-                {filename} · {docType?.toUpperCase()} · {currentPage}/{totalPages || "?"}
-              </Text>
-            ) : null}
-
-            <View style={styles.previewBox}>
-              {docType && totalPages > 0 ? (
-                <WebView
-                  key={`${docType}-${currentPage}-${filename}`}
-                  originWhitelist={["*"]}
-                  source={{ html: previewHtml }}
-                  style={styles.webview}
-                  javaScriptEnabled
-                  domStorageEnabled
-                  allowsInlineMediaPlayback
+              <View style={styles.setupCard}>
+                <Text style={styles.setupLabel}>Server URL</Text>
+                <TextInput
+                  style={styles.setupInput}
+                  placeholder="http://192.168.1.x:3000"
+                  placeholderTextColor="#334155"
+                  autoCapitalize="none"
+                  keyboardType="url"
+                  value={serverInput}
+                  onChangeText={setServerInput}
+                  onSubmitEditing={saveAndConnect}
+                  returnKeyType="go"
                 />
-              ) : (
-                <Text style={styles.previewPlaceholder}>Slide preview appears here</Text>
-              )}
-            </View>
-
-            {docType !== "video" && (
-              <View style={styles.controls}>
-                <TouchableOpacity
-                  style={[styles.navBtn, currentPage <= 1 && styles.disabled]}
-                  onPress={goPrev}
-                  disabled={currentPage <= 1 || totalPages === 0}
-                >
-                  <Text style={styles.navBtnText}>PREVIOUS</Text>
+                <TouchableOpacity style={styles.setupBtn} onPress={saveAndConnect}>
+                  <Text style={styles.setupBtnText}>CONNECT  →</Text>
                 </TouchableOpacity>
-                <Text style={styles.pageIndicator}>
-                  {totalPages > 0 ? `${currentPage} / ${totalPages}` : "—"}
+                <Text style={styles.setupHint}>
+                  Run the server on your PC/Termux and paste its address above
                 </Text>
-                <TouchableOpacity
-                  style={[styles.navBtn, currentPage >= totalPages && styles.disabled]}
-                  onPress={goNext}
-                  disabled={currentPage >= totalPages || totalPages === 0}
-                >
-                  <Text style={styles.navBtnText}>NEXT</Text>
-                </TouchableOpacity>
               </View>
-            )}
-          </>
-        )}
-
-        {/* ========== BIBLE SCREEN ========== */}
-        {screen === "bible" && (
-          <View style={styles.card}>
-            <Text style={styles.label}>Search Verse</Text>
-
-            <View style={styles.searchRow}>
-              <TextInput
-                style={styles.searchInput}
-                placeholder="e.g. Jer 29:11"
-                placeholderTextColor="#64748b"
-                value={verseQuery}
-                onChangeText={(text) => {
-                  setVerseQuery(text);
-                  setShowSuggestions(true);
-                }}
-                onFocus={() => setShowSuggestions(true)}
-                autoCapitalize="words"
-                onSubmitEditing={() => {
-                  setShowSuggestions(false);
-                  loadVerse(verseQuery, { showOnTv: false });
-                }}
-              />
-              {verseQuery.length > 0 && (
-                <TouchableOpacity
-                  style={styles.clearBtn}
-                  onPress={() => {
-                    setVerseQuery("");
-                    setShowSuggestions(false);
-                  }}
-                >
-                  <Text style={styles.clearBtnText}>✕</Text>
-                </TouchableOpacity>
-              )}
             </View>
+          )}
 
-            {showSuggestions && suggestions.length > 0 && verseQuery.trim().length > 0 && (
-              <View style={styles.suggestBox}>
-                <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled={true}>
-                  {suggestions.map((s) => (
-                    <TouchableOpacity
-                      key={s}
-                      style={styles.suggestItem}
-                      onPress={() => selectSuggestion(s)}
-                    >
-                      <Text style={styles.suggestText}>{s}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
-
-            <TouchableOpacity
-              style={[styles.secondaryBtn, { marginBottom: 12 }]}
-              onPress={() => {
-                setShowSuggestions(false);
-                loadVerse(verseQuery, { showOnTv: false });
-              }}
-              disabled={loadingVerse}
-            >
-              <Text style={styles.secondaryBtnText}>Load preview</Text>
-            </TouchableOpacity>
-
-            {versePreview.reference ? (
-              <View style={styles.versePreviewBox}>
-                <Text style={styles.versePreviewRef}>{versePreview.reference}</Text>
-
-                {/* HINDI FIRST */}
-                <View style={styles.hindiContainer}>
-                  <Text style={[styles.versePreviewText, styles.hindiText]}>
-                    {versePreview.hi}
-                  </Text>
-                  <View style={styles.dividerLine} />
+          {/* ===== MAIN APP ===== */}
+          {setupDone && (
+            <Animated.View style={{ opacity: fadeAnim }}>
+              <TouchableOpacity
+                style={styles.statusBar}
+                onPress={() => setSetupDone(false)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.topBadge}>
+                  <View style={[styles.topBadgeDot, !connected && styles.topBadgeDotOff]} />
+                  <Text style={styles.statusBarText} numberOfLines={1}>{topCastLine}</Text>
                 </View>
+                <Text style={styles.statusBarEdit}>✎</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          )}
 
-                {/* ENGLISH SECOND */}
-                <Text style={styles.versePreviewText}>{versePreview.en}</Text>
+          {setupDone && (
+            <Animated.View style={{ opacity: fadeAnim }}>
+              {/* Tab Row */}
+              <View style={styles.tabRow}>
+                <TouchableOpacity
+                  style={[styles.tabBtn, screen === "present" && styles.tabBtnActive]}
+                  onPress={() => setScreen("present")}
+                >
+                  <Text style={[styles.tabBtnText, screen === "present" && styles.tabBtnTextActive]}>Present</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.tabBtn, screen === "bible" && styles.tabBtnActive]}
+                  onPress={() => setScreen("bible")}
+                >
+                  <Text style={[styles.tabBtnText, screen === "bible" && styles.tabBtnTextActive]}>Bible</Text>
+                </TouchableOpacity>
               </View>
-            ) : null}
 
-            {/* Text Size Controls */}
-            <Text style={[styles.label, { marginTop: 12 }]}>Text Size Control</Text>
-            <View style={styles.fontSizeControls}>
-              <TouchableOpacity
-                style={styles.sizeBtn}
-                onPress={() => adjustFontSize(-0.1)}
-              >
-                <Text style={styles.sizeBtnText}>A−</Text>
-              </TouchableOpacity>
-              <Text style={styles.sizeDisplay}>
-                {Math.round(verseFontSizeScale * 100)}%
-              </Text>
-              <TouchableOpacity
-                style={styles.sizeBtn}
-                onPress={() => adjustFontSize(0.1)}
-              >
-                <Text style={styles.sizeBtnText}>A+</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={[styles.label, { marginTop: 4 }]}>Background Theme</Text>
-
-            {themes.length === 0 ? (
-              <Text style={styles.themeHint}>Connect to load themes.</Text>
-            ) : (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.themeScroll}
-              >
-                {themes.map((t) => (
+              {/* ========== PRESENT SCREEN ========== */}
+              {screen === "present" && (
+                <>
                   <TouchableOpacity
-                    key={t.id}
-                    onPress={() => setSelectedTheme(t.id)}
-                    style={[
-                      styles.themeChip,
-                      selectedTheme === t.id && styles.themeChipActive,
-                    ]}
+                    style={[styles.primaryBtn, uploading && styles.disabled]}
+                    onPress={pickDocument}
+                    disabled={uploading}
                   >
-                    <Text style={[styles.themeChipText, selectedTheme === t.id && styles.themeChipTextActive]}>{t.label || t.id}</Text>
+                    {uploading
+                      ? <ActivityIndicator color="#fff" />
+                      : <Text style={styles.primaryBtnText}>Pick PDF, PPTX, or Video</Text>
+                    }
                   </TouchableOpacity>
-                ))}
-              </ScrollView>
-            )}
 
-            <TouchableOpacity
-              style={[
-                styles.primaryBtn,
-                (loadingVerse || !connected) && styles.disabled,
-              ]}
-              onPress={showVerseOnTv}
-              disabled={loadingVerse || !connected}
-            >
-              {loadingVerse ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.primaryBtnText}>SHOW ON TV</Text>
+                  {filename ? (
+                    <Text style={styles.fileName}>
+                      {filename} · {docType?.toUpperCase()} · {currentPage}/{totalPages || "?"}
+                    </Text>
+                  ) : null}
+
+                  <View style={styles.previewBox}>
+                    {docType && totalPages > 0 ? (
+                      <WebView
+                        key={`${docType}-${currentPage}-${filename}`}
+                        originWhitelist={["*"]}
+                        source={{ html: previewHtml }}
+                        style={styles.webview}
+                        javaScriptEnabled
+                        domStorageEnabled
+                        allowsInlineMediaPlayback
+                      />
+                    ) : (
+                      <Text style={styles.previewPlaceholder}>Slide preview appears here</Text>
+                    )}
+                  </View>
+
+                  {docType !== "video" && (
+                    <View style={styles.controls}>
+                      <TouchableOpacity
+                        style={[styles.navBtn, currentPage <= 1 && styles.disabled]}
+                        onPress={goPrev}
+                        disabled={currentPage <= 1 || totalPages === 0}
+                      >
+                        <Text style={styles.navBtnText}>PREVIOUS</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.pageIndicator}>
+                        {totalPages > 0 ? `${currentPage} / ${totalPages}` : "—"}
+                      </Text>
+                      <TouchableOpacity
+                        style={[styles.navBtn, currentPage >= totalPages && styles.disabled]}
+                        onPress={goNext}
+                        disabled={currentPage >= totalPages || totalPages === 0}
+                      >
+                        <Text style={styles.navBtnText}>NEXT</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </>
               )}
-            </TouchableOpacity>
 
-            <View style={styles.controls}>
-              <TouchableOpacity
-                style={[styles.navBtn, (!currentRef || loadingVerse) && styles.disabled]}
-                onPress={goVersePrev}
-                disabled={!currentRef || loadingVerse}
-              >
-                <Text style={styles.navBtnText}>PREVIOUS</Text>
-              </TouchableOpacity>
-              <Text style={styles.pageIndicator}>
-                {currentRef ? `v${currentRef.verse}` : "—"}
-                {chapterVerseCount > 0 ? ` / ${chapterVerseCount}` : ""}
-              </Text>
-              <TouchableOpacity
-                style={[styles.navBtn, loadingVerse && styles.disabled]}
-                onPress={goVerseNext}
-                disabled={loadingVerse}
-              >
-                <Text style={styles.navBtnText}>NEXT</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-          </Animated.View>
-        )}
-      </ScrollView>
+              {/* ========== BIBLE SCREEN ========== */}
+              {/* FIX 3: Order — Search → Load Preview → Verse Preview →
+                  Theme → SHOW ON TV → Prev/Next → Text Size (sabse neeche) */}
+              {screen === "bible" && (
+                <View style={styles.card}>
+
+                  {/* 1. Search */}
+                  <Text style={styles.label}>Search Verse</Text>
+                  <View style={styles.searchRow}>
+                    <TextInput
+                      style={styles.searchInput}
+                      placeholder="e.g. Jer 29:11"
+                      placeholderTextColor="#64748b"
+                      value={verseQuery}
+                      onChangeText={(text) => { setVerseQuery(text); setShowSuggestions(true); }}
+                      onFocus={() => setShowSuggestions(true)}
+                      autoCapitalize="words"
+                      onSubmitEditing={() => { setShowSuggestions(false); loadVerse(verseQuery, { showOnTv: false }); }}
+                    />
+                    {verseQuery.length > 0 && (
+                      <TouchableOpacity
+                        style={styles.clearBtn}
+                        onPress={() => { setVerseQuery(""); setShowSuggestions(false); }}
+                      >
+                        <Text style={styles.clearBtnText}>✕</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* 2. Suggestions dropdown */}
+                  {showSuggestions && suggestions.length > 0 && verseQuery.trim().length > 0 && (
+                    <View style={styles.suggestBox}>
+                      <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled={true}>
+                        {suggestions.map((s) => (
+                          <TouchableOpacity
+                            key={s}
+                            style={styles.suggestItem}
+                            onPress={() => selectSuggestion(s)}
+                          >
+                            <Text style={styles.suggestText}>{s}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
+
+                  {/* 3. Load Preview button */}
+                  <TouchableOpacity
+                    style={[styles.secondaryBtn, { marginBottom: 12 }]}
+                    onPress={() => { setShowSuggestions(false); loadVerse(verseQuery, { showOnTv: false }); }}
+                    disabled={loadingVerse}
+                  >
+                    <Text style={styles.secondaryBtnText}>Load preview</Text>
+                  </TouchableOpacity>
+
+                  {/* 4. Verse Preview box */}
+                  {versePreview.reference ? (
+                    <View style={styles.versePreviewBox}>
+                      <Text style={styles.versePreviewRef}>{versePreview.reference}</Text>
+                      <View style={styles.hindiContainer}>
+                        <Text style={[styles.versePreviewText, styles.hindiText]}>
+                          {versePreview.hi}
+                        </Text>
+                        <View style={styles.dividerLine} />
+                      </View>
+                      <Text style={styles.versePreviewText}>{versePreview.en}</Text>
+                    </View>
+                  ) : null}
+
+                  {/* 5. Background Theme */}
+                  <Text style={[styles.label, { marginTop: 8 }]}>Background Theme</Text>
+                  {themes.length === 0 ? (
+                    <Text style={styles.themeHint}>Connect to load themes.</Text>
+                  ) : (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      style={styles.themeScroll}
+                    >
+                      {themes.map((t) => (
+                        <TouchableOpacity
+                          key={t.id}
+                          onPress={() => setSelectedTheme(t.id)}
+                          style={[styles.themeChip, selectedTheme === t.id && styles.themeChipActive]}
+                        >
+                          <Text style={[styles.themeChipText, selectedTheme === t.id && styles.themeChipTextActive]}>
+                            {t.label || t.id}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  )}
+
+                  {/* 6. SHOW ON TV */}
+                  <TouchableOpacity
+                    style={[styles.primaryBtn, (loadingVerse || !connected) && styles.disabled]}
+                    onPress={showVerseOnTv}
+                    disabled={loadingVerse || !connected}
+                  >
+                    {loadingVerse
+                      ? <ActivityIndicator color="#fff" />
+                      : <Text style={styles.primaryBtnText}>SHOW ON TV</Text>
+                    }
+                  </TouchableOpacity>
+
+                  {/* 7. Prev / Next verse controls */}
+                  <View style={styles.controls}>
+                    <TouchableOpacity
+                      style={[styles.navBtn, (!currentRef || loadingVerse) && styles.disabled]}
+                      onPress={goVersePrev}
+                      disabled={!currentRef || loadingVerse}
+                    >
+                      <Text style={styles.navBtnText}>PREVIOUS</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.pageIndicator}>
+                      {currentRef ? `v${currentRef.verse}` : "—"}
+                      {chapterVerseCount > 0 ? ` / ${chapterVerseCount}` : ""}
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.navBtn, loadingVerse && styles.disabled]}
+                      onPress={goVerseNext}
+                      disabled={loadingVerse}
+                    >
+                      <Text style={styles.navBtnText}>NEXT</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* 8. Text Size Control — SABSE NEECHE */}
+                  <View style={styles.textSizeSeparator} />
+                  <Text style={[styles.label, { marginTop: 4 }]}>Text Size (TV)</Text>
+                  <View style={styles.fontSizeControls}>
+                    <TouchableOpacity
+                      style={styles.sizeBtn}
+                      onPress={() => adjustFontSize(-0.1)}
+                    >
+                      <Text style={styles.sizeBtnText}>A−</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.sizeDisplay}>
+                      {Math.round(verseFontSizeScale * 100)}%
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.sizeBtn}
+                      onPress={() => adjustFontSize(0.1)}
+                    >
+                      <Text style={styles.sizeBtnText}>A+</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                </View>
+              )}
+            </Animated.View>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 // =============================================================================
 const styles = StyleSheet.create({
-  // --- Layout ---
   safe: { flex: 1, backgroundColor: "#0a0f1e" },
+  // FIX 2: KeyboardAvoidingView ko flex:1 dena zaroori hai
+  kav:  { flex: 1 },
   container: { padding: 20, paddingBottom: 48 },
 
-  // --- Top Bar ---
-  topBar: {
-    backgroundColor: "#111827",
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: "#1e3a5f",
-  },
-  topBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  topBadgeDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: "#22c55e",
-    marginRight: 7,
-  },
-  topBadgeDotOff: {
-    backgroundColor: "#ef4444",
-  },
+  topBadge: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
+  topBadgeDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#22c55e", marginRight: 7 },
+  topBadgeDotOff: { backgroundColor: "#ef4444" },
   topTitle: { color: "#64748b", fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase", fontWeight: "600" },
-  topUrl: { color: "#38bdf8", fontSize: 17, fontWeight: "800", letterSpacing: 0.3, marginBottom: 4 },
-  topHint: { color: "#334155", fontSize: 11, marginTop: 4 },
+  topUrl:   { color: "#38bdf8", fontSize: 17, fontWeight: "800", letterSpacing: 0.3, marginBottom: 4 },
+  topHint:  { color: "#334155", fontSize: 11, marginTop: 4 },
 
-  // --- Card ---
   card: {
     backgroundColor: "#111827",
     borderRadius: 20,
@@ -1017,7 +907,6 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
 
-  // --- Inputs ---
   input: {
     backgroundColor: "#0f172a",
     color: "#f1f5f9",
@@ -1028,7 +917,6 @@ const styles = StyleSheet.create({
     borderColor: "#1e293b",
     marginBottom: 14,
     fontSize: 15,
-    letterSpacing: 0.2,
   },
   searchRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
   searchInput: {
@@ -1042,22 +930,16 @@ const styles = StyleSheet.create({
     borderColor: "#1d4ed8",
     fontSize: 15,
     marginRight: 8,
-    letterSpacing: 0.2,
   },
-  clearBtn: { padding: 10, justifyContent: "center" },
+  clearBtn:     { padding: 10, justifyContent: "center" },
   clearBtnText: { color: "#475569", fontSize: 17, fontWeight: "bold" },
 
-  // --- Buttons ---
   primaryBtn: {
     backgroundColor: "#1d4ed8",
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: "center",
     marginBottom: 12,
-    shadowColor: "#1d4ed8",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
     elevation: 6,
   },
   primaryBtnText: { color: "#fff", fontSize: 14, fontWeight: "800", letterSpacing: 1 },
@@ -1072,16 +954,8 @@ const styles = StyleSheet.create({
   secondaryBtnText: { color: "#cbd5e1", fontWeight: "600", fontSize: 14 },
   disabled: { opacity: 0.35 },
 
-  // --- File name ---
-  fileName: {
-    color: "#475569",
-    marginBottom: 14,
-    fontSize: 12,
-    textAlign: "center",
-    letterSpacing: 0.3,
-  },
+  fileName: { color: "#475569", marginBottom: 14, fontSize: 12, textAlign: "center" },
 
-  // --- Preview Box ---
   previewBox: {
     height: 210,
     backgroundColor: "#020617",
@@ -1092,15 +966,8 @@ const styles = StyleSheet.create({
     borderColor: "#1e293b",
   },
   webview: { flex: 1, backgroundColor: "#000" },
-  previewPlaceholder: {
-    color: "#334155",
-    textAlign: "center",
-    marginTop: 85,
-    fontSize: 13,
-    letterSpacing: 0.5,
-  },
+  previewPlaceholder: { color: "#334155", textAlign: "center", marginTop: 85, fontSize: 13 },
 
-  // --- Nav Controls ---
   controls: {
     flexDirection: "row",
     alignItems: "center",
@@ -1117,16 +984,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#166534",
   },
-  navBtnText: { color: "#86efac", fontSize: 12, fontWeight: "800", letterSpacing: 1.2 },
-  pageIndicator: {
-    color: "#94a3b8",
-    fontSize: 14,
-    fontWeight: "700",
-    minWidth: 60,
-    textAlign: "center",
-  },
+  navBtnText:    { color: "#86efac", fontSize: 12, fontWeight: "800", letterSpacing: 1.2 },
+  pageIndicator: { color: "#94a3b8", fontSize: 14, fontWeight: "700", minWidth: 60, textAlign: "center" },
 
-  // --- Tabs ---
   tabRow: {
     flexDirection: "row",
     marginBottom: 16,
@@ -1137,25 +997,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#1e293b",
   },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  tabBtnActive: {
-    backgroundColor: "#1d4ed8",
-    shadowColor: "#1d4ed8",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  tabBtnText: { color: "#64748b", fontWeight: "700", fontSize: 13, letterSpacing: 0.5 },
-  tabBtnTextActive: { color: "#fff" },
+  tabBtn:          { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: "center" },
+  tabBtnActive:    { backgroundColor: "#1d4ed8", elevation: 4 },
+  tabBtnText:      { color: "#64748b", fontWeight: "700", fontSize: 13, letterSpacing: 0.5 },
+  tabBtnTextActive:{ color: "#fff" },
 
-  // --- Themes ---
-  themeScroll: { marginBottom: 14, maxHeight: 50 },
+  themeScroll:       { marginBottom: 14, maxHeight: 50 },
   themeChip: {
     paddingHorizontal: 18,
     paddingVertical: 10,
@@ -1166,15 +1013,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#334155",
   },
-  themeChipActive: {
-    backgroundColor: "#1e3a8a",
-    borderColor: "#3b82f6",
-  },
-  themeChipText: { color: "#94a3b8", fontWeight: "600", fontSize: 13 },
+  themeChipActive:     { backgroundColor: "#1e3a8a", borderColor: "#3b82f6" },
+  themeChipText:       { color: "#94a3b8", fontWeight: "600", fontSize: 13 },
   themeChipTextActive: { color: "#bfdbfe" },
-  themeHint: { color: "#334155", fontSize: 12, marginBottom: 12 },
+  themeHint:           { color: "#334155", fontSize: 12, marginBottom: 12 },
 
-  // --- Suggestions ---
   suggestBox: {
     backgroundColor: "#0f172a",
     borderRadius: 12,
@@ -1184,10 +1027,6 @@ const styles = StyleSheet.create({
     maxHeight: 200,
     zIndex: 10,
     elevation: 8,
-    shadowColor: "#1d4ed8",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
   },
   suggestItem: {
     paddingVertical: 13,
@@ -1195,9 +1034,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#1e293b",
   },
-  suggestText: { color: "#cbd5e1", fontSize: 14, letterSpacing: 0.2 },
+  suggestText: { color: "#cbd5e1", fontSize: 14 },
 
-  // --- Verse Preview ---
   versePreviewBox: {
     backgroundColor: "#0c1322",
     borderRadius: 16,
@@ -1228,17 +1066,8 @@ const styles = StyleSheet.create({
     width: "100%",
     flexShrink: 1,
   },
-  hindiContainer: {
-    width: "100%",
-    alignItems: "center",
-    marginBottom: 14,
-  },
-  dividerLine: {
-    height: 1,
-    width: "40%",
-    backgroundColor: "#1e3a5f",
-    marginTop: 14,
-  },
+  hindiContainer: { width: "100%", alignItems: "center", marginBottom: 14 },
+  dividerLine:    { height: 1, width: "40%", backgroundColor: "#1e3a5f", marginTop: 14 },
   hindiText: {
     fontFamily: Platform.OS === "ios" ? "Devanagari Sangam MN" : "serif",
     color: "#93c5fd",
@@ -1246,7 +1075,13 @@ const styles = StyleSheet.create({
     lineHeight: 26,
   },
 
-  // --- Font Size Controls ---
+  // Text size separator line
+  textSizeSeparator: {
+    height: 1,
+    backgroundColor: "#1e293b",
+    marginTop: 20,
+    marginBottom: 16,
+  },
   fontSizeControls: {
     flexDirection: "row",
     alignItems: "center",
@@ -1255,7 +1090,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 6,
     paddingHorizontal: 8,
-    marginBottom: 14,
+    marginBottom: 4,
     borderWidth: 1,
     borderColor: "#1e293b",
   },
@@ -1270,35 +1105,11 @@ const styles = StyleSheet.create({
   sizeBtnText: { color: "#94a3b8", fontSize: 15, fontWeight: "800" },
   sizeDisplay: { color: "#38bdf8", fontSize: 15, fontWeight: "800", letterSpacing: 1 },
 
-  // --- Setup Screen ---
-  setupScreen: {
-    flex: 1,
-    minHeight: 680,
-    justifyContent: "center",
-    paddingTop: 60,
-  },
-  setupLogo: {
-    alignItems: "center",
-    marginBottom: 48,
-  },
-  setupLogoIcon: {
-    fontSize: 48,
-    color: "#3b82f6",
-    marginBottom: 12,
-  },
-  setupAppName: {
-    fontSize: 32,
-    fontWeight: "800",
-    color: "#f1f5f9",
-    letterSpacing: 1,
-    marginBottom: 6,
-  },
-  setupTagline: {
-    fontSize: 13,
-    color: "#475569",
-    letterSpacing: 1.5,
-    textTransform: "uppercase",
-  },
+  setupScreen: { flex: 1, minHeight: 680, justifyContent: "center", paddingTop: 60 },
+  setupLogo:   { alignItems: "center", marginBottom: 48 },
+  setupLogoIcon: { fontSize: 48, color: "#3b82f6", marginBottom: 12 },
+  setupAppName:  { fontSize: 32, fontWeight: "800", color: "#f1f5f9", letterSpacing: 1, marginBottom: 6 },
+  setupTagline:  { fontSize: 13, color: "#475569", letterSpacing: 1.5, textTransform: "uppercase" },
   setupCard: {
     backgroundColor: "#111827",
     borderRadius: 24,
@@ -1324,7 +1135,6 @@ const styles = StyleSheet.create({
     borderColor: "#1e3a5f",
     fontSize: 16,
     marginBottom: 16,
-    letterSpacing: 0.3,
   },
   setupBtn: {
     backgroundColor: "#1d4ed8",
@@ -1332,26 +1142,11 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     alignItems: "center",
     marginBottom: 16,
-    shadowColor: "#1d4ed8",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.45,
-    shadowRadius: 16,
     elevation: 8,
   },
-  setupBtnText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 2,
-  },
-  setupHint: {
-    color: "#334155",
-    fontSize: 12,
-    textAlign: "center",
-    lineHeight: 18,
-  },
+  setupBtnText: { color: "#fff", fontSize: 14, fontWeight: "800", letterSpacing: 2 },
+  setupHint:    { color: "#334155", fontSize: 12, textAlign: "center", lineHeight: 18 },
 
-  // --- Status Bar (collapsed connection info) ---
   statusBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -1364,16 +1159,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#1e293b",
   },
-  statusBarText: {
-    color: "#38bdf8",
-    fontSize: 13,
-    fontWeight: "700",
-    marginLeft: 8,
-    flex: 1,
-  },
-  statusBarEdit: {
-    color: "#334155",
-    fontSize: 16,
-    marginLeft: 8,
-  },
+  statusBarText: { color: "#38bdf8", fontSize: 13, fontWeight: "700", marginLeft: 8, flex: 1 },
+  statusBarEdit: { color: "#334155", fontSize: 16, marginLeft: 8 },
 });

@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>TV Display</title>
   <style>
-    /* CSS Variable for dynamic font scaling (from Doc 1) */
     :root { --verse-base-scale: 1.0; }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -18,7 +17,6 @@
       font-family: system-ui, -apple-system, sans-serif;
     }
 
-    /* --- Presentation Stage --- */
     #stage {
       position: fixed;
       inset: 0;
@@ -67,17 +65,21 @@
       display: none;
       flex-direction: column;
     }
+    /* FIX 1: #verseBg ko background shorthand use karna chahiye taaki
+       background-size/position properly apply ho. backgroundImage alone
+       sometimes override ho jaata hai ya size apply nahi hota. */
     #verseBg {
       position: absolute;
       inset: 0;
+      background-color: #1a1a2e;
       background-size: cover;
-      background-position: center;
+      background-position: center center;
       background-repeat: no-repeat;
     }
     #verseOverlay {
       position: absolute;
       inset: 0;
-      background: rgba(0, 0, 0, 0.4);
+      background: rgba(0, 0, 0, 0.45);
     }
     #verseContent {
       position: relative;
@@ -86,7 +88,7 @@
       width: 100%;
       display: flex;
       flex-direction: column;
-      padding: 4vh 4vw;
+      padding: 4vh 6vw;
       text-align: center;
       justify-content: center;
       color: #fff;
@@ -101,41 +103,48 @@
       white-space: pre-wrap;
     }
 
-    /* Reference — uses CSS variable scale (from Doc 1) */
     #verseRefSection {
       flex: 0 0 auto;
-      margin-bottom: 2vh;
+      margin-bottom: 3vh;
       font-family: sans-serif;
       font-weight: 800;
       text-transform: uppercase;
-      letter-spacing: 1px;
+      letter-spacing: 2px;
       color: #ffeb3b;
-      text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+      text-shadow: 0 2px 8px rgba(0,0,0,0.9);
     }
     #verseRef {
       font-size: calc(2.5vh * var(--verse-base-scale));
     }
 
-    /* Hindi — uses CSS variable scale (from Doc 1) */
     #verseHiSection {
       font-family: 'Noto Sans Devanagari', 'Mangal', sans-serif;
       font-weight: 500;
       color: #e0f2f1;
-      margin-bottom: 1.5vh;
+      margin-bottom: 2vh;
+      text-shadow: 0 1px 6px rgba(0,0,0,0.8);
     }
     #verseHiText {
       font-size: calc(4vh * var(--verse-base-scale));
-      line-height: 1.4;
+      line-height: 1.5;
     }
 
-    /* English — uses CSS variable scale (from Doc 1) */
+    #verseDivider {
+      width: 80px;
+      height: 2px;
+      background: rgba(255,255,255,0.3);
+      margin: 1.5vh auto;
+    }
+
     #verseEnSection {
       font-family: 'Georgia', 'Times New Roman', serif;
       font-style: italic;
+      color: #f8fafc;
+      text-shadow: 0 1px 6px rgba(0,0,0,0.8);
     }
     #verseEnText {
-      font-size: calc(4vh * var(--verse-base-scale));
-      line-height: 1.3;
+      font-size: calc(3.8vh * var(--verse-base-scale));
+      line-height: 1.4;
     }
   </style>
   <script src="/socket.io/socket.io.js"></script>
@@ -163,6 +172,7 @@
       <div id="verseHiSection" class="verse-section">
         <div id="verseHiText"></div>
       </div>
+      <div id="verseDivider"></div>
       <div id="verseEnSection" class="verse-section">
         <div id="verseEnText"></div>
       </div>
@@ -174,7 +184,6 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
 
-    // --- DOM Elements ---
     const waitingEl      = document.getElementById("waiting");
     const stageEl        = document.getElementById("stage");
     const pdfCanvas      = document.getElementById("pdfCanvas");
@@ -186,8 +195,10 @@
 
     const verseStage     = document.getElementById("verseStage");
     const verseBg        = document.getElementById("verseBg");
+    const verseDivider   = document.getElementById("verseDivider");
     const verseRef       = document.getElementById("verseRef");
     const verseEnText    = document.getElementById("verseEnText");
+    const verseEnSection = document.getElementById("verseEnSection");
     const verseHiText    = document.getElementById("verseHiText");
     const verseHiSection = document.getElementById("verseHiSection");
 
@@ -203,17 +214,15 @@
       documentUrl: null,
     };
 
-    // --- Socket ---
     const socket = io({ transports: ["websocket", "polling"], reconnection: true });
 
-    // ✅ MERGED: Font size controller from Doc 1
     socket.on("change-font-size", (payload) => {
       if (payload && payload.scale) {
         document.documentElement.style.setProperty("--verse-base-scale", payload.scale);
       }
     });
 
-    // --- Helpers ---
+    // FIX 1: resolveUrl — already absolute URL ko waise hi return karo
     function resolveUrl(url) {
       if (!url) return "";
       if (/^https?:\/\//i.test(url)) return url;
@@ -222,44 +231,62 @@
     }
 
     function hideAll() {
-      pdfCanvas.style.display   = "none";
-      slideImage.style.display  = "none";
+      pdfCanvas.style.display     = "none";
+      slideImage.style.display    = "none";
       placeholderEl.style.display = "none";
-      castVideo.style.display   = "none";
+      castVideo.style.display     = "none";
       try { castVideo.pause(); } catch (_e) {}
     }
 
-    // --- Verse View ---
+    // FIX 1: background set karne ke liye style.backgroundImage ki jagah
+    // style.background shorthand use karo — yeh ensure karta hai ki
+    // background-size aur background-position sahi se apply ho.
     function showVerseView(payload) {
       displayMode = "verse";
       waitingEl.style.display = "none";
       stageEl.style.display   = "none";
       hideAll();
 
-      let hiTxt = (payload.hiText || "").replace(/\s+/g, " ").trim();
-      let enTxt = (payload.enText || "").replace(/\s+/g, " ").trim();
+      const hiTxt = (payload.hiText || "").replace(/\s+/g, " ").trim();
+      const enTxt = (payload.enText || "").replace(/\s+/g, " ").trim();
 
-      const bg = resolveUrl(payload.backgroundUrl || "/backgrounds/nature-1.jpg");
-      verseBg.style.backgroundImage = `url('${bg}')`;
+      // FIX 1: resolveUrl already handle karta hai http:// URLs
+      // Single quotes ko URL mein avoid karo — double quotes ya encode karo
+      const bgUrl = resolveUrl(payload.backgroundUrl || "/backgrounds/nature-1.jpg");
+      // background shorthand: color fallback + image + size + position
+      verseBg.style.cssText = `
+        position: absolute;
+        inset: 0;
+        background: #1a1a2e url("${bgUrl.replace(/"/g, '%22')}") center center / cover no-repeat;
+      `;
 
       verseRef.textContent    = payload.reference || "";
-      verseEnText.textContent = enTxt;
       verseHiText.textContent = hiTxt;
+      verseEnText.textContent = enTxt;
 
-      // Hide Hindi section if no Hindi text
-      verseHiSection.style.display = hiTxt === "" ? "none" : "flex";
+      // Hindi section aur divider hide karo agar hi text nahi hai
+      verseHiSection.style.display = hiTxt ? "flex" : "none";
+      verseDivider.style.display   = hiTxt ? "block" : "none";
+      // English bhi hide karo agar nahi hai
+      verseEnSection.style.display = enTxt ? "flex" : "none";
 
       verseStage.style.display = "flex";
     }
 
     function hideVerseView() {
       verseStage.style.display = "none";
-      verseBg.style.backgroundImage = "";
+      verseBg.style.cssText = `
+        position: absolute;
+        inset: 0;
+        background-color: #1a1a2e;
+        background-size: cover;
+        background-position: center center;
+        background-repeat: no-repeat;
+      `;
       if (displayMode === "verse") displayMode = "document";
       stageEl.style.display = "flex";
     }
 
-    // --- PDF ---
     async function renderPdfPage(pageNumber) {
       const page = await pdfDoc.getPage(pageNumber);
       const base = page.getViewport({ scale: 1 });
@@ -287,7 +314,6 @@
       pdfDoc = await pdfjsLib.getDocument(url).promise;
     }
 
-    // --- PPTX ---
     function renderPptxSlide(pageNumber) {
       const slide = state.slideImages[pageNumber - 1];
       hideAll();
@@ -308,7 +334,6 @@
       slideTextEl.textContent     = slide.placeholder || "";
     }
 
-    // --- Video ---
     function renderVideo() {
       hideAll();
       waitingEl.style.display = "none";
@@ -318,14 +343,13 @@
       castVideo.play().catch(() => {});
     }
 
-    // --- Render Current ---
     async function renderCurrent() {
       if (displayMode === "verse") return;
       if (!state.type || state.totalPages < 1) {
         hideAll();
-        waitingEl.style.display  = "flex";
-        waitingEl.textContent    = "Waiting for document…";
-        stageEl.style.display    = "flex";
+        waitingEl.style.display = "flex";
+        waitingEl.textContent   = "Waiting for document…";
+        stageEl.style.display   = "flex";
         return;
       }
       waitingEl.style.display = "none";
@@ -365,7 +389,6 @@
       await renderCurrent();
     }
 
-    // --- Socket Events ---
     socket.on("connect", () => {
       socket.emit("join-room", { role: "viewer" }, async (ack) => {
         if (!ack) return;
