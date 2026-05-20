@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>TV Display</title>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <style>
     :root { --verse-base-scale: 1.0; }
 
@@ -56,7 +58,7 @@
       z-index: 5;
     }
 
-    /* FIX: Added Cast Iframe Style */
+    /* --- FIX: Cast Iframe --- */
     #castIframe {
       position: fixed;
       inset: 0;
@@ -67,6 +69,23 @@
       display: none;
       background: #fff;
     }
+
+    /* --- FIX: Video Autoplay Overlay --- */
+    #videoOverlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 100;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    #videoOverlay:hover { background: rgba(0, 0, 0, 0.8); }
+    #videoOverlayIcon { font-size: 60px; color: #fff; margin-bottom: 15px; }
+    #videoOverlayText { font-size: 24px; font-weight: bold; color: #fff; text-align: center; padding: 0 20px; }
 
     /* --- Bilingual Verse Stage --- */
     #verseStage {
@@ -161,8 +180,14 @@
 <body>
   <div id="waiting">Waiting for connection…</div>
   
+  <!-- FIX: Added Overlay for Autoplay Permission -->
+  <div id="videoOverlay">
+    <div id="videoOverlayIcon">▶</div>
+    <div id="videoOverlayText">Tap anywhere to enable Remote Control</div>
+  </div>
+
   <!-- FIX: Added Cast Iframe -->
-  <iframe id="castIframe" allowfullscreen></iframe>
+  <iframe id="castIframe" allowfullscreen allow="autoplay"></iframe>
 
   <div id="stage">
     <canvas id="pdfCanvas"></canvas>
@@ -204,7 +229,8 @@
     const placeholderEl  = document.getElementById("placeholder");
     const slideNumberEl  = document.getElementById("slideNumber");
     const slideTextEl    = document.getElementById("slideText");
-    const castIframe     = document.getElementById("castIframe"); // FIX
+    const castIframe     = document.getElementById("castIframe");
+    const videoOverlay   = document.getElementById("videoOverlay"); // FIX
 
     const verseStage     = document.getElementById("verseStage");
     const verseBg        = document.getElementById("verseBg");
@@ -218,6 +244,7 @@
     let pdfDoc      = null;
     let renderTask  = null;
     let displayMode = "waiting";
+    let videoInteracted = false; // FIX: Track if user clicked on TV
 
     const state = {
       type: null,
@@ -247,9 +274,20 @@
       slideImage.style.display    = "none";
       placeholderEl.style.display = "none";
       castVideo.style.display     = "none";
-      castIframe.style.display    = "none"; // FIX
+      castIframe.style.display    = "none";
+      videoOverlay.style.display  = "none"; // FIX: Hide overlay
       try { castVideo.pause(); } catch (_e) {}
     }
+
+    // FIX: Overlay click handler to grant autoplay permission
+    videoOverlay.addEventListener("click", () => {
+      castVideo.play().then(() => {
+        videoInteracted = true;
+        videoOverlay.style.display = "none";
+      }).catch(err => {
+        console.error("Play failed even after click", err);
+      });
+    });
 
     function showVerseView(payload) {
       displayMode = "verse";
@@ -339,17 +377,32 @@
       slideTextEl.textContent     = slide.placeholder || "";
     }
 
+    // FIX: Updated renderVideo with Autoplay handling
     function renderVideo() {
       hideAll();
       waitingEl.style.display = "none";
       const base = resolveUrl(state.documentUrl || "/api/document/file");
       castVideo.src = `${base}${base.includes("?") ? "&" : "?"}t=${Date.now()}`;
       castVideo.style.display = "block";
-      castVideo.play().catch(() => {});
+      
+      videoInteracted = false; // Reset interaction state
+
+      const playPromise = castVideo.play();
+      if (playPromise !== undefined) {
+        playPromise.then(_ => {
+          // Autoplay started successfully
+          videoInteracted = true;
+        })
+        .catch(error => {
+          console.log("[TV] Autoplay blocked. Showing overlay.");
+          // Autoplay prevented, show overlay so user must click
+          videoOverlay.style.display = "flex";
+        });
+      }
     }
 
     async function renderCurrent() {
-      if (displayMode === "verse") return;
+      if (displayMode === "verse" || displayMode === "url") return;
       if (!state.type || state.totalPages < 1) {
         hideAll();
         waitingEl.style.display = "flex";
@@ -372,7 +425,6 @@
     }
 
     async function applyPayload(payload, reloadPdf) {
-      // FIX: If we were casting a URL, stop it
       castIframe.style.display = "none";
       castIframe.src = "";
       
@@ -419,12 +471,18 @@
 
     socket.on("video-control", (payload) => {
       if (state.type !== "video") return;
+      
+      // If user hasn't interacted yet, force overlay up
+      if (!videoInteracted && payload.action === "play") {
+        videoOverlay.style.display = "flex";
+        return;
+      }
+
       if (payload.action === "play")  castVideo.play().catch(() => {});
       if (payload.action === "pause") castVideo.pause();
       if (typeof payload.time === "number") castVideo.currentTime = payload.time;
     });
 
-    // FIX: Added video-seek listener
     socket.on("video-seek", (payload) => {
       if (state.type !== "video") return;
       if (typeof payload.delta === "number") {
@@ -432,9 +490,8 @@
       }
     });
 
-    // FIX: Added open-url listener
     socket.on("open-url", (payload) => {
-      const targetUrl = payload.url;
+      let targetUrl = payload.url;
       
       // Hide everything else
       hideAll();
@@ -444,13 +501,22 @@
       waitingEl.style.display = "none";
 
       // Check if it's the "Back to App" command
-      // The app sends the server URL to go back.
       if (targetUrl.includes(window.location.origin) || targetUrl === "/") {
           castIframe.style.display = "none";
-          // Restore previous view (usually document or waiting)
           displayMode = "document";
           renderCurrent().catch(() => {});
       } else {
+          // --- FIX: YouTube Embed Conversion ---
+          if (targetUrl.includes("youtube.com") || targetUrl.includes("youtu.be")) {
+            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+            const match = targetUrl.match(regExp);
+            if (match && match[2].length === 11) {
+              targetUrl = `https://www.youtube.com/embed/${match[2]}?autoplay=1`;
+              console.log("[TV] Converted YouTube URL to Embed:", targetUrl);
+            }
+          }
+          // ------------------------------------
+
           castIframe.src = targetUrl;
           castIframe.style.display = "block";
           displayMode = "url";
@@ -459,7 +525,7 @@
 
     socket.on("disconnect", () => {
       hideVerseView();
-      castIframe.style.display = "none"; // FIX
+      castIframe.style.display = "none";
       waitingEl.style.display = "flex";
       waitingEl.textContent   = "Reconnecting…";
     });
