@@ -56,6 +56,18 @@
       z-index: 5;
     }
 
+    /* FIX: Added Cast Iframe Style */
+    #castIframe {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+      z-index: 50;
+      display: none;
+      background: #fff;
+    }
+
     /* --- Bilingual Verse Stage --- */
     #verseStage {
       position: fixed;
@@ -65,9 +77,6 @@
       display: none;
       flex-direction: column;
     }
-    /* FIX 1: #verseBg ko background shorthand use karna chahiye taaki
-       background-size/position properly apply ho. backgroundImage alone
-       sometimes override ho jaata hai ya size apply nahi hota. */
     #verseBg {
       position: absolute;
       inset: 0;
@@ -151,6 +160,9 @@
 </head>
 <body>
   <div id="waiting">Waiting for connection…</div>
+  
+  <!-- FIX: Added Cast Iframe -->
+  <iframe id="castIframe" allowfullscreen></iframe>
 
   <div id="stage">
     <canvas id="pdfCanvas"></canvas>
@@ -192,6 +204,7 @@
     const placeholderEl  = document.getElementById("placeholder");
     const slideNumberEl  = document.getElementById("slideNumber");
     const slideTextEl    = document.getElementById("slideText");
+    const castIframe     = document.getElementById("castIframe"); // FIX
 
     const verseStage     = document.getElementById("verseStage");
     const verseBg        = document.getElementById("verseBg");
@@ -222,7 +235,6 @@
       }
     });
 
-    // FIX 1: resolveUrl — already absolute URL ko waise hi return karo
     function resolveUrl(url) {
       if (!url) return "";
       if (/^https?:\/\//i.test(url)) return url;
@@ -235,12 +247,10 @@
       slideImage.style.display    = "none";
       placeholderEl.style.display = "none";
       castVideo.style.display     = "none";
+      castIframe.style.display    = "none"; // FIX
       try { castVideo.pause(); } catch (_e) {}
     }
 
-    // FIX 1: background set karne ke liye style.backgroundImage ki jagah
-    // style.background shorthand use karo — yeh ensure karta hai ki
-    // background-size aur background-position sahi se apply ho.
     function showVerseView(payload) {
       displayMode = "verse";
       waitingEl.style.display = "none";
@@ -250,10 +260,7 @@
       const hiTxt = (payload.hiText || "").replace(/\s+/g, " ").trim();
       const enTxt = (payload.enText || "").replace(/\s+/g, " ").trim();
 
-      // FIX 1: resolveUrl already handle karta hai http:// URLs
-      // Single quotes ko URL mein avoid karo — double quotes ya encode karo
       const bgUrl = resolveUrl(payload.backgroundUrl || "/backgrounds/nature-1.jpg");
-      // background shorthand: color fallback + image + size + position
       verseBg.style.cssText = `
         position: absolute;
         inset: 0;
@@ -264,10 +271,8 @@
       verseHiText.textContent = hiTxt;
       verseEnText.textContent = enTxt;
 
-      // Hindi section aur divider hide karo agar hi text nahi hai
       verseHiSection.style.display = hiTxt ? "flex" : "none";
       verseDivider.style.display   = hiTxt ? "block" : "none";
-      // English bhi hide karo agar nahi hai
       verseEnSection.style.display = enTxt ? "flex" : "none";
 
       verseStage.style.display = "flex";
@@ -367,6 +372,10 @@
     }
 
     async function applyPayload(payload, reloadPdf) {
+      // FIX: If we were casting a URL, stop it
+      castIframe.style.display = "none";
+      castIframe.src = "";
+      
       hideVerseView();
       displayMode = "document";
 
@@ -415,14 +424,48 @@
       if (typeof payload.time === "number") castVideo.currentTime = payload.time;
     });
 
+    // FIX: Added video-seek listener
+    socket.on("video-seek", (payload) => {
+      if (state.type !== "video") return;
+      if (typeof payload.delta === "number") {
+        castVideo.currentTime += payload.delta;
+      }
+    });
+
+    // FIX: Added open-url listener
+    socket.on("open-url", (payload) => {
+      const targetUrl = payload.url;
+      
+      // Hide everything else
+      hideAll();
+      hideVerseView();
+      stageEl.style.display = "none"; 
+      verseStage.style.display = "none";
+      waitingEl.style.display = "none";
+
+      // Check if it's the "Back to App" command
+      // The app sends the server URL to go back.
+      if (targetUrl.includes(window.location.origin) || targetUrl === "/") {
+          castIframe.style.display = "none";
+          // Restore previous view (usually document or waiting)
+          displayMode = "document";
+          renderCurrent().catch(() => {});
+      } else {
+          castIframe.src = targetUrl;
+          castIframe.style.display = "block";
+          displayMode = "url";
+      }
+    });
+
     socket.on("disconnect", () => {
       hideVerseView();
+      castIframe.style.display = "none"; // FIX
       waitingEl.style.display = "flex";
       waitingEl.textContent   = "Reconnecting…";
     });
 
     window.addEventListener("resize", () => {
-      if (displayMode === "verse") return;
+      if (displayMode === "verse" || displayMode === "url") return;
       renderCurrent().catch(() => {});
     });
   </script>

@@ -368,7 +368,6 @@ io.on("connection", (socket) => {
     });
   });
 
-  // NAYA: Font size change control logic
   socket.on("change-font-size", (data) => {
     io.emit("change-font-size", { scale: data?.scale || 1.0 });
   });
@@ -379,6 +378,21 @@ io.on("connection", (socket) => {
     const max = Math.max(1, presentation.totalPages);
     presentation.currentPage = Math.min(Math.max(1, page), max);
     io.emit("change-page", { page: presentation.currentPage, totalPages: presentation.totalPages, type: presentation.type, filename: presentation.filename, slideImages: presentation.slideImages, documentUrl: presentation.storedPath ? "/api/document/file" : null });
+  });
+
+  // FIX: Added relay for Video Control
+  socket.on("video-control", (data) => {
+    io.emit("video-control", data);
+  });
+
+  // FIX: Added relay for Video Seek
+  socket.on("video-seek", (data) => {
+    io.emit("video-seek", data);
+  });
+
+  // FIX: Added relay for Open URL
+  socket.on("open-url", (data) => {
+    io.emit("open-url", data);
   });
 });
 

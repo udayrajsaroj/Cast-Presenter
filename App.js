@@ -94,16 +94,15 @@ const BIBLE_BOOKS = [
 ];
 
 const POPULAR_VERSES = [
-  "John 3:16",
-  "Psalm 23:1",
-  "Romans 8:28",
-  "Philippians 4:13",
-  "Matthew 6:9",
-  "Genesis 1:1",
-  "Proverbs 3:5",
-  "Jeremiah 29:11",
-  "Isaiah 41:10",
-  "Matthew 28:19",
+  "John 3:16", "Psalm 23:1", "Romans 8:28", "Philippians 4:13",
+  "Matthew 6:9", "Genesis 1:1", "Proverbs 3:5", "Jeremiah 29:11",
+  "Isaiah 41:10", "Matthew 28:19",
+];
+
+const QUICK_URLS = [
+  { label: "YouTube", url: "https://www.youtube.com" },
+  { label: "Bible.com", url: "https://www.bible.com" },
+  { label: "Google", url: "https://www.google.com" },
 ];
 
 // --- Helpers ---
@@ -111,9 +110,7 @@ function normalizeBaseUrl(url) {
   let trimmed = (url || "").trim().replace(/\/+$/, "");
   if (!trimmed) return "";
   if (!/^https?:\/\//i.test(trimmed)) trimmed = `http://${trimmed}`;
-  if (/\.onrender\.com/i.test(trimmed)) {
-    trimmed = trimmed.replace(/^http:\/\//i, "https://");
-  }
+  if (/\.onrender\.com/i.test(trimmed)) trimmed = trimmed.replace(/^http:\/\//i, "https://");
   return trimmed;
 }
 
@@ -145,18 +142,13 @@ function getSuggestions(query) {
     out.push(formatReference(parsed));
     if (!parsed.endVerse) {
       out.push(formatReference({ ...parsed, verse: parsed.verse + 1 }));
-      if (parsed.verse > 1) {
-        out.push(formatReference({ ...parsed, verse: parsed.verse - 1 }));
-      }
+      if (parsed.verse > 1) out.push(formatReference({ ...parsed, verse: parsed.verse - 1 }));
     }
     return [...new Set(out)].slice(0, 8);
   }
   for (const b of BIBLE_BOOKS) {
     const name = b.name.toLowerCase();
-    if (
-      name.startsWith(q) ||
-      b.abbr.some((a) => a.startsWith(q) || q.startsWith(a))
-    ) {
+    if (name.startsWith(q) || b.abbr.some((a) => a.startsWith(q) || q.startsWith(a))) {
       out.push(`${b.name} 1:1`);
       out.push(`${b.name} 3:16`);
     }
@@ -167,7 +159,7 @@ function getSuggestions(query) {
   return [...new Set(out)].slice(0, 8);
 }
 
-// --- Preview HTML Generator ---
+// --- Preview HTML ---
 function buildPreviewHtml({ baseUrl, docType, page, totalPages, slideImages }) {
   const safeBase   = JSON.stringify(baseUrl);
   const safeType   = JSON.stringify(docType || "");
@@ -213,11 +205,11 @@ function buildPreviewHtml({ baseUrl, docType, page, totalPages, slideImages }) {
       const pdf = await pdfjsLib.getDocument(baseUrl + "/api/document/file?t=" + Date.now()).promise;
       const p = await pdf.getPage(page);
       const viewport = p.getViewport({ scale: 1 });
-      const scale = Math.min((window.innerWidth - 16) / viewport.width, (window.innerHeight - 40) / viewport.height) * window.devicePixelRatio;
+      const scale = Math.min((window.innerWidth-16)/viewport.width, (window.innerHeight-40)/viewport.height) * window.devicePixelRatio;
       const vp = p.getViewport({ scale });
       canvas.width = vp.width; canvas.height = vp.height;
-      canvas.style.width = (vp.width / window.devicePixelRatio) + "px";
-      canvas.style.height = (vp.height / window.devicePixelRatio) + "px";
+      canvas.style.width = (vp.width/window.devicePixelRatio)+"px";
+      canvas.style.height = (vp.height/window.devicePixelRatio)+"px";
       await p.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
       canvas.style.display = "block";
     }
@@ -233,7 +225,7 @@ function buildPreviewHtml({ baseUrl, docType, page, totalPages, slideImages }) {
       vid.play().catch(() => {});
     }
     if (!docType) { text.style.display = "block"; text.textContent = "No document"; }
-    else if (docType === "pdf") { showPdf().catch(() => { text.style.display = "block"; text.textContent = "PDF preview error"; }); }
+    else if (docType === "pdf") { showPdf().catch(() => { text.style.display="block"; text.textContent="PDF preview error"; }); }
     else if (docType === "video") { showVideo(); }
     else { showPptx(); }
   <\/script>
@@ -249,6 +241,7 @@ export default function App() {
   const [phoneIp, setPhoneIp]           = useState("");
   const [connected, setConnected]       = useState(false);
 
+  // Present state
   const [uploading, setUploading]       = useState(false);
   const [currentPage, setCurrentPage]   = useState(1);
   const [totalPages, setTotalPages]     = useState(0);
@@ -257,6 +250,7 @@ export default function App() {
   const [slideImages, setSlideImages]   = useState([]);
   const [castUrl, setCastUrl]           = useState("");
 
+  // Bible state
   const [screen, setScreen]             = useState("present");
   const [verseQuery, setVerseQuery]     = useState("");
   const [suggestions, setSuggestions]   = useState([]);
@@ -268,6 +262,9 @@ export default function App() {
   const [versePreview, setVersePreview] = useState({ en: "", hi: "", reference: "" });
   const [chapterVerseCount, setChapterVerseCount] = useState(0);
   const [verseFontSizeScale, setVerseFontSizeScale] = useState(1.0);
+
+  // URL Cast state
+  const [urlInput, setUrlInput]         = useState("");
 
   const [setupDone, setSetupDone] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -336,22 +333,16 @@ export default function App() {
       const res  = await fetch(`${base}/api/info`);
       const json = await res.json();
       if (json.displayUrl) setCastUrl(json.displayUrl);
-    } catch (_e) {
-      setCastUrl(base);
-    }
+    } catch (_e) { setCastUrl(base); }
     try {
-      const tr   = await fetch(`${base}/api/themes`);
+      const tr = await fetch(`${base}/api/themes`);
       if (tr.ok) {
         const tj   = await tr.json();
         const list = tj.themes || [];
         setThemes(list);
         if (list.length > 0) setSelectedTheme(list[0].id);
-      } else {
-        setThemes([]);
-      }
-    } catch (_e) {
-      setThemes([]);
-    }
+      } else { setThemes([]); }
+    } catch (_e) { setThemes([]); }
   }, []);
 
   const saveAndConnect = useCallback(async () => {
@@ -366,7 +357,7 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
-      const ip   = await Network.getIpAddressAsync();
+      const ip    = await Network.getIpAddressAsync();
       setPhoneIp(ip || "0.0.0.0");
       const saved = await AsyncStorage.getItem(STORAGE_KEY);
       if (saved) {
@@ -391,6 +382,32 @@ export default function App() {
     [connected, totalPages]
   );
 
+  // --- Video Controls ---
+  const videoControl = useCallback(
+    (action, time) => {
+      if (!socketRef.current || !connected) return;
+      const payload = { action };
+      if (typeof time === "number") payload.time = time;
+      socketRef.current.emit("video-control", payload);
+    },
+    [connected]
+  );
+
+  // --- URL Cast ---
+  const openUrlOnTv = useCallback(
+    (url) => {
+      if (!socketRef.current || !connected) {
+        Alert.alert("Not connected", "Connect to server first.");
+        return;
+      }
+      let finalUrl = (url || urlInput).trim();
+      if (!finalUrl) return;
+      if (!/^https?:\/\//i.test(finalUrl)) finalUrl = `https://${finalUrl}`;
+      socketRef.current.emit("open-url", { url: finalUrl });
+    },
+    [connected, urlInput]
+  );
+
   const fetchChapterVerseCount = useCallback(
     async (book, chapter) => {
       try {
@@ -409,12 +426,13 @@ export default function App() {
       if (!socketRef.current || !connected || !preview) return;
       const theme  = themes.find((t) => t.id === selectedTheme) || themes[0];
       const bgPath = theme?.image || "/backgrounds/nature-1.jpg";
+      const backgroundUrl = /^https?:\/\//i.test(bgPath) ? bgPath : `${serverUrl}${bgPath}`;
       socketRef.current.emit("show-verse", {
-        reference:     preview.reference,
-        enText:        preview.en,
-        hiText:        preview.hi,
-        theme:         selectedTheme,
-        backgroundUrl: `${serverUrl}${bgPath}`,
+        reference: preview.reference,
+        enText:    preview.en,
+        hiText:    preview.hi,
+        theme:     selectedTheme,
+        backgroundUrl,
       });
     },
     [connected, themes, selectedTheme, serverUrl]
@@ -445,14 +463,12 @@ export default function App() {
         const res  = await fetch(`${serverUrl}/api/bible/bilingual/${ref}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || "Verse not found");
-
         const parsed = parseReference(json.reference || q);
         if (parsed) {
           setCurrentRef(parsed);
           const count = await fetchChapterVerseCount(parsed.book, parsed.chapter);
           setChapterVerseCount(count);
         }
-
         const hiText  = (json.hiText || "").replace(/\s+/g, " ").trim();
         const enText  = (json.enText || "").replace(/\s+/g, " ").trim();
         const preview = { reference: json.reference || q, en: enText, hi: hiText };
@@ -489,9 +505,7 @@ export default function App() {
       chapter += 1; verse = 1;
       const count = await fetchChapterVerseCount(book, chapter);
       setChapterVerseCount(count);
-    } else {
-      verse += 1;
-    }
+    } else { verse += 1; }
     await loadVerse(formatReference({ book, chapter, verse }), { showOnTv: true });
   }, [currentRef, chapterVerseCount, verseQuery, loadVerse, fetchChapterVerseCount]);
 
@@ -505,9 +519,7 @@ export default function App() {
       const count = await fetchChapterVerseCount(book, chapter);
       setChapterVerseCount(count);
       verse = count || 1;
-    } else {
-      verse -= 1;
-    }
+    } else { verse -= 1; }
     await loadVerse(formatReference({ book, chapter, verse }), { showOnTv: true });
   }, [currentRef, loadVerse, fetchChapterVerseCount]);
 
@@ -523,16 +535,14 @@ export default function App() {
         copyToCacheDirectory: true,
       });
       if (result.canceled || !result.assets || !result.assets[0]) return;
-      const asset = result.assets[0];
+      const asset    = result.assets[0];
       setUploading(true);
-      let uploadUri = asset.uri;
+      let uploadUri  = asset.uri;
       const name     = asset.name || "document";
       const mimeType = asset.mimeType ||
         (name.toLowerCase().endsWith(".pptx")
           ? "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-          : name.toLowerCase().match(/\.(mp4|mov|webm|m4v)$/)
-          ? "video/mp4"
-          : "application/pdf");
+          : name.toLowerCase().match(/\.(mp4|mov|webm|m4v)$/) ? "video/mp4" : "application/pdf");
 
       if (Platform.OS === "android" && uploadUri) {
         if (!uploadUri.startsWith("file://")) {
@@ -581,7 +591,6 @@ export default function App() {
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style="light" />
-      {/* FIX 2: KeyboardAvoidingView — keyboard aane par content upar shift hoga */}
       <KeyboardAvoidingView
         style={styles.kav}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -642,7 +651,8 @@ export default function App() {
 
           {setupDone && (
             <Animated.View style={{ opacity: fadeAnim }}>
-              {/* Tab Row */}
+
+              {/* ===== TAB ROW — 3 tabs ===== */}
               <View style={styles.tabRow}>
                 <TouchableOpacity
                   style={[styles.tabBtn, screen === "present" && styles.tabBtnActive]}
@@ -655,6 +665,12 @@ export default function App() {
                   onPress={() => setScreen("bible")}
                 >
                   <Text style={[styles.tabBtnText, screen === "bible" && styles.tabBtnTextActive]}>Bible</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.tabBtn, screen === "cast" && styles.tabBtnActive]}
+                  onPress={() => setScreen("cast")}
+                >
+                  <Text style={[styles.tabBtnText, screen === "cast" && styles.tabBtnTextActive]}>Cast URL</Text>
                 </TouchableOpacity>
               </View>
 
@@ -694,6 +710,7 @@ export default function App() {
                     )}
                   </View>
 
+                  {/* PDF/PPTX nav controls */}
                   {docType !== "video" && (
                     <View style={styles.controls}>
                       <TouchableOpacity
@@ -701,7 +718,7 @@ export default function App() {
                         onPress={goPrev}
                         disabled={currentPage <= 1 || totalPages === 0}
                       >
-                        <Text style={styles.navBtnText}>PREVIOUS</Text>
+                        <Text style={styles.navBtnText}>◀  PREV</Text>
                       </TouchableOpacity>
                       <Text style={styles.pageIndicator}>
                         {totalPages > 0 ? `${currentPage} / ${totalPages}` : "—"}
@@ -711,19 +728,68 @@ export default function App() {
                         onPress={goNext}
                         disabled={currentPage >= totalPages || totalPages === 0}
                       >
-                        <Text style={styles.navBtnText}>NEXT</Text>
+                        <Text style={styles.navBtnText}>NEXT  ▶</Text>
                       </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* Video controls — only when docType === video */}
+                  {docType === "video" && (
+                    <View style={styles.card}>
+                      <Text style={styles.label}>Video Controls</Text>
+                      <View style={styles.videoRow}>
+                        <TouchableOpacity
+                          style={[styles.videoBtn, !connected && styles.disabled]}
+                          onPress={() => videoControl("play")}
+                          disabled={!connected}
+                        >
+                          <Text style={styles.videoBtnIcon}>▶</Text>
+                          <Text style={styles.videoBtnText}>Play</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.videoBtn, !connected && styles.disabled]}
+                          onPress={() => videoControl("pause")}
+                          disabled={!connected}
+                        >
+                          <Text style={styles.videoBtnIcon}>⏸</Text>
+                          <Text style={styles.videoBtnText}>Pause</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.videoBtn, styles.videoBtnStop, !connected && styles.disabled]}
+                          onPress={() => videoControl("pause", 0)}
+                          disabled={!connected}
+                        >
+                          <Text style={styles.videoBtnIcon}>⏹</Text>
+                          <Text style={styles.videoBtnText}>Stop</Text>
+                        </TouchableOpacity>
+                      </View>
+                      {/* Seek shortcuts */}
+                      <Text style={[styles.label, { marginTop: 14 }]}>Seek</Text>
+                      <View style={styles.seekRow}>
+                        {[
+                          { label: "−30s", val: -30 },
+                          { label: "−10s", val: -10 },
+                          { label: "+10s", val: 10 },
+                          { label: "+30s", val: 30 },
+                        ].map((btn) => (
+                          <TouchableOpacity
+                            key={btn.label}
+                            style={[styles.seekBtn, !connected && styles.disabled]}
+                            onPress={() => socketRef.current?.emit("video-seek", { delta: btn.val })}
+                            disabled={!connected}
+                          >
+                            <Text style={styles.seekBtnText}>{btn.label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     </View>
                   )}
                 </>
               )}
 
               {/* ========== BIBLE SCREEN ========== */}
-              {/* FIX 3: Order — Search → Load Preview → Verse Preview →
-                  Theme → SHOW ON TV → Prev/Next → Text Size (sabse neeche) */}
               {screen === "bible" && (
                 <View style={styles.card}>
-
                   {/* 1. Search */}
                   <Text style={styles.label}>Search Verse</Text>
                   <View style={styles.searchRow}>
@@ -747,16 +813,12 @@ export default function App() {
                     )}
                   </View>
 
-                  {/* 2. Suggestions dropdown */}
+                  {/* 2. Suggestions */}
                   {showSuggestions && suggestions.length > 0 && verseQuery.trim().length > 0 && (
                     <View style={styles.suggestBox}>
-                      <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled={true}>
+                      <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled>
                         {suggestions.map((s) => (
-                          <TouchableOpacity
-                            key={s}
-                            style={styles.suggestItem}
-                            onPress={() => selectSuggestion(s)}
-                          >
+                          <TouchableOpacity key={s} style={styles.suggestItem} onPress={() => selectSuggestion(s)}>
                             <Text style={styles.suggestText}>{s}</Text>
                           </TouchableOpacity>
                         ))}
@@ -764,7 +826,7 @@ export default function App() {
                     </View>
                   )}
 
-                  {/* 3. Load Preview button */}
+                  {/* 3. Load Preview */}
                   <TouchableOpacity
                     style={[styles.secondaryBtn, { marginBottom: 12 }]}
                     onPress={() => { setShowSuggestions(false); loadVerse(verseQuery, { showOnTv: false }); }}
@@ -773,30 +835,24 @@ export default function App() {
                     <Text style={styles.secondaryBtnText}>Load preview</Text>
                   </TouchableOpacity>
 
-                  {/* 4. Verse Preview box */}
+                  {/* 4. Verse Preview */}
                   {versePreview.reference ? (
                     <View style={styles.versePreviewBox}>
                       <Text style={styles.versePreviewRef}>{versePreview.reference}</Text>
                       <View style={styles.hindiContainer}>
-                        <Text style={[styles.versePreviewText, styles.hindiText]}>
-                          {versePreview.hi}
-                        </Text>
+                        <Text style={[styles.versePreviewText, styles.hindiText]}>{versePreview.hi}</Text>
                         <View style={styles.dividerLine} />
                       </View>
                       <Text style={styles.versePreviewText}>{versePreview.en}</Text>
                     </View>
                   ) : null}
 
-                  {/* 5. Background Theme */}
+                  {/* 5. Theme */}
                   <Text style={[styles.label, { marginTop: 8 }]}>Background Theme</Text>
                   {themes.length === 0 ? (
                     <Text style={styles.themeHint}>Connect to load themes.</Text>
                   ) : (
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      style={styles.themeScroll}
-                    >
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.themeScroll}>
                       {themes.map((t) => (
                         <TouchableOpacity
                           key={t.id}
@@ -811,7 +867,7 @@ export default function App() {
                     </ScrollView>
                   )}
 
-                  {/* 6. SHOW ON TV */}
+                  {/* 6. Show on TV */}
                   <TouchableOpacity
                     style={[styles.primaryBtn, (loadingVerse || !connected) && styles.disabled]}
                     onPress={showVerseOnTv}
@@ -823,14 +879,14 @@ export default function App() {
                     }
                   </TouchableOpacity>
 
-                  {/* 7. Prev / Next verse controls */}
+                  {/* 7. Prev / Next */}
                   <View style={styles.controls}>
                     <TouchableOpacity
                       style={[styles.navBtn, (!currentRef || loadingVerse) && styles.disabled]}
                       onPress={goVersePrev}
                       disabled={!currentRef || loadingVerse}
                     >
-                      <Text style={styles.navBtnText}>PREVIOUS</Text>
+                      <Text style={styles.navBtnText}>◀  PREV</Text>
                     </TouchableOpacity>
                     <Text style={styles.pageIndicator}>
                       {currentRef ? `v${currentRef.verse}` : "—"}
@@ -841,33 +897,90 @@ export default function App() {
                       onPress={goVerseNext}
                       disabled={loadingVerse}
                     >
-                      <Text style={styles.navBtnText}>NEXT</Text>
+                      <Text style={styles.navBtnText}>NEXT  ▶</Text>
                     </TouchableOpacity>
                   </View>
 
-                  {/* 8. Text Size Control — SABSE NEECHE */}
+                  {/* 8. Text Size — sabse neeche */}
                   <View style={styles.textSizeSeparator} />
                   <Text style={[styles.label, { marginTop: 4 }]}>Text Size (TV)</Text>
                   <View style={styles.fontSizeControls}>
-                    <TouchableOpacity
-                      style={styles.sizeBtn}
-                      onPress={() => adjustFontSize(-0.1)}
-                    >
+                    <TouchableOpacity style={styles.sizeBtn} onPress={() => adjustFontSize(-0.1)}>
                       <Text style={styles.sizeBtnText}>A−</Text>
                     </TouchableOpacity>
-                    <Text style={styles.sizeDisplay}>
-                      {Math.round(verseFontSizeScale * 100)}%
-                    </Text>
-                    <TouchableOpacity
-                      style={styles.sizeBtn}
-                      onPress={() => adjustFontSize(0.1)}
-                    >
+                    <Text style={styles.sizeDisplay}>{Math.round(verseFontSizeScale * 100)}%</Text>
+                    <TouchableOpacity style={styles.sizeBtn} onPress={() => adjustFontSize(0.1)}>
                       <Text style={styles.sizeBtnText}>A+</Text>
                     </TouchableOpacity>
                   </View>
-
                 </View>
               )}
+
+              {/* ========== CAST URL SCREEN ========== */}
+              {screen === "cast" && (
+                <View style={styles.card}>
+                  <Text style={styles.label}>Open URL on TV</Text>
+                  <Text style={styles.castHint}>
+                    Open any website on the TV browser — YouTube, news, maps, anything.
+                  </Text>
+
+                  {/* URL Input */}
+                  <View style={styles.searchRow}>
+                    <TextInput
+                      style={styles.searchInput}
+                      placeholder="https://www.youtube.com"
+                      placeholderTextColor="#64748b"
+                      value={urlInput}
+                      onChangeText={setUrlInput}
+                      autoCapitalize="none"
+                      keyboardType="url"
+                      autoCorrect={false}
+                      onSubmitEditing={() => openUrlOnTv(urlInput)}
+                      returnKeyType="go"
+                    />
+                    {urlInput.length > 0 && (
+                      <TouchableOpacity style={styles.clearBtn} onPress={() => setUrlInput("")}>
+                        <Text style={styles.clearBtnText}>✕</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  <TouchableOpacity
+                    style={[styles.primaryBtn, !connected && styles.disabled]}
+                    onPress={() => openUrlOnTv(urlInput)}
+                    disabled={!connected}
+                  >
+                    <Text style={styles.primaryBtnText}>OPEN ON TV  →</Text>
+                  </TouchableOpacity>
+
+                  {/* Quick Shortcuts */}
+                  <Text style={[styles.label, { marginTop: 8 }]}>Quick Open</Text>
+                  <View style={styles.quickUrlGrid}>
+                    {QUICK_URLS.map((item) => (
+                      <TouchableOpacity
+                        key={item.label}
+                        style={[styles.quickUrlBtn, !connected && styles.disabled]}
+                        onPress={() => openUrlOnTv(item.url)}
+                        disabled={!connected}
+                      >
+                        <Text style={styles.quickUrlLabel}>{item.label}</Text>
+                        <Text style={styles.quickUrlSub} numberOfLines={1}>{item.url.replace("https://", "")}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {/* Go back to CastWord TV page */}
+                  <View style={styles.textSizeSeparator} />
+                  <TouchableOpacity
+                    style={[styles.secondaryBtn, !connected && styles.disabled]}
+                    onPress={() => openUrlOnTv(topCastLine)}
+                    disabled={!connected}
+                  >
+                    <Text style={styles.secondaryBtnText}>↩  Return to CastWord TV Page</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
             </Animated.View>
           )}
         </ScrollView>
@@ -879,16 +992,12 @@ export default function App() {
 // =============================================================================
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#0a0f1e" },
-  // FIX 2: KeyboardAvoidingView ko flex:1 dena zaroori hai
   kav:  { flex: 1 },
   container: { padding: 20, paddingBottom: 48 },
 
-  topBadge: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
-  topBadgeDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#22c55e", marginRight: 7 },
+  topBadge:       { flexDirection: "row", alignItems: "center", marginBottom: 6 },
+  topBadgeDot:    { width: 7, height: 7, borderRadius: 4, backgroundColor: "#22c55e", marginRight: 7 },
   topBadgeDotOff: { backgroundColor: "#ef4444" },
-  topTitle: { color: "#64748b", fontSize: 11, letterSpacing: 1.5, textTransform: "uppercase", fontWeight: "600" },
-  topUrl:   { color: "#38bdf8", fontSize: 17, fontWeight: "800", letterSpacing: 0.3, marginBottom: 4 },
-  topHint:  { color: "#334155", fontSize: 11, marginTop: 4 },
 
   card: {
     backgroundColor: "#111827",
@@ -907,18 +1016,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
 
-  input: {
-    backgroundColor: "#0f172a",
-    color: "#f1f5f9",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderWidth: 1.5,
-    borderColor: "#1e293b",
-    marginBottom: 14,
-    fontSize: 15,
-  },
-  searchRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  searchRow:    { flexDirection: "row", alignItems: "center", marginBottom: 12 },
   searchInput: {
     flex: 1,
     backgroundColor: "#0f172a",
@@ -942,7 +1040,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     elevation: 6,
   },
-  primaryBtnText: { color: "#fff", fontSize: 14, fontWeight: "800", letterSpacing: 1 },
+  primaryBtnText:  { color: "#fff", fontSize: 14, fontWeight: "800", letterSpacing: 1 },
   secondaryBtn: {
     backgroundColor: "#1e293b",
     borderRadius: 12,
@@ -952,7 +1050,7 @@ const styles = StyleSheet.create({
     borderColor: "#334155",
   },
   secondaryBtnText: { color: "#cbd5e1", fontWeight: "600", fontSize: 14 },
-  disabled: { opacity: 0.35 },
+  disabled:         { opacity: 0.35 },
 
   fileName: { color: "#475569", marginBottom: 14, fontSize: 12, textAlign: "center" },
 
@@ -965,7 +1063,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#1e293b",
   },
-  webview: { flex: 1, backgroundColor: "#000" },
+  webview:            { flex: 1, backgroundColor: "#000" },
   previewPlaceholder: { color: "#334155", textAlign: "center", marginTop: 85, fontSize: 13 },
 
   controls: {
@@ -974,6 +1072,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 10,
     marginTop: 8,
+    marginBottom: 16,
   },
   navBtn: {
     flex: 1,
@@ -984,25 +1083,54 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#166534",
   },
-  navBtnText:    { color: "#86efac", fontSize: 12, fontWeight: "800", letterSpacing: 1.2 },
+  navBtnText:    { color: "#86efac", fontSize: 12, fontWeight: "800", letterSpacing: 1 },
   pageIndicator: { color: "#94a3b8", fontSize: 14, fontWeight: "700", minWidth: 60, textAlign: "center" },
+
+  // Video controls
+  videoRow: { flexDirection: "row", gap: 10 },
+  videoBtn: {
+    flex: 1,
+    backgroundColor: "#1e293b",
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#334155",
+    gap: 4,
+  },
+  videoBtnStop:  { borderColor: "#7f1d1d", backgroundColor: "#1c0a0a" },
+  videoBtnIcon:  { color: "#e2e8f0", fontSize: 20 },
+  videoBtnText:  { color: "#94a3b8", fontSize: 11, fontWeight: "700", letterSpacing: 0.8 },
+
+  // Seek row
+  seekRow: { flexDirection: "row", gap: 8 },
+  seekBtn: {
+    flex: 1,
+    backgroundColor: "#0f172a",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#1e293b",
+  },
+  seekBtnText: { color: "#64748b", fontSize: 12, fontWeight: "700" },
 
   tabRow: {
     flexDirection: "row",
     marginBottom: 16,
-    gap: 8,
+    gap: 6,
     backgroundColor: "#111827",
     borderRadius: 16,
     padding: 5,
     borderWidth: 1,
     borderColor: "#1e293b",
   },
-  tabBtn:          { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: "center" },
-  tabBtnActive:    { backgroundColor: "#1d4ed8", elevation: 4 },
-  tabBtnText:      { color: "#64748b", fontWeight: "700", fontSize: 13, letterSpacing: 0.5 },
-  tabBtnTextActive:{ color: "#fff" },
+  tabBtn:           { flex: 1, paddingVertical: 11, borderRadius: 12, alignItems: "center" },
+  tabBtnActive:     { backgroundColor: "#1d4ed8", elevation: 4 },
+  tabBtnText:       { color: "#64748b", fontWeight: "700", fontSize: 12, letterSpacing: 0.4 },
+  tabBtnTextActive: { color: "#fff" },
 
-  themeScroll:       { marginBottom: 14, maxHeight: 50 },
+  themeScroll: { marginBottom: 14, maxHeight: 50 },
   themeChip: {
     paddingHorizontal: 18,
     paddingVertical: 10,
@@ -1075,13 +1203,7 @@ const styles = StyleSheet.create({
     lineHeight: 26,
   },
 
-  // Text size separator line
-  textSizeSeparator: {
-    height: 1,
-    backgroundColor: "#1e293b",
-    marginTop: 20,
-    marginBottom: 16,
-  },
+  textSizeSeparator: { height: 1, backgroundColor: "#1e293b", marginTop: 20, marginBottom: 16 },
   fontSizeControls: {
     flexDirection: "row",
     alignItems: "center",
@@ -1105,11 +1227,39 @@ const styles = StyleSheet.create({
   sizeBtnText: { color: "#94a3b8", fontSize: 15, fontWeight: "800" },
   sizeDisplay: { color: "#38bdf8", fontSize: 15, fontWeight: "800", letterSpacing: 1 },
 
-  setupScreen: { flex: 1, minHeight: 680, justifyContent: "center", paddingTop: 60 },
-  setupLogo:   { alignItems: "center", marginBottom: 48 },
-  setupLogoIcon: { fontSize: 48, color: "#3b82f6", marginBottom: 12 },
-  setupAppName:  { fontSize: 32, fontWeight: "800", color: "#f1f5f9", letterSpacing: 1, marginBottom: 6 },
-  setupTagline:  { fontSize: 13, color: "#475569", letterSpacing: 1.5, textTransform: "uppercase" },
+  // URL Cast screen
+  castHint: {
+    color: "#475569",
+    fontSize: 12,
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  quickUrlGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 4,
+  },
+  quickUrlBtn: {
+    backgroundColor: "#0f172a",
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: "#1e293b",
+    minWidth: "30%",
+    flex: 1,
+    alignItems: "center",
+  },
+  quickUrlLabel: { color: "#e2e8f0", fontSize: 13, fontWeight: "700", marginBottom: 4 },
+  quickUrlSub:   { color: "#475569", fontSize: 10, letterSpacing: 0.2 },
+
+  // Setup
+  setupScreen:  { flex: 1, minHeight: 680, justifyContent: "center", paddingTop: 60 },
+  setupLogo:    { alignItems: "center", marginBottom: 48 },
+  setupLogoIcon:{ fontSize: 48, color: "#3b82f6", marginBottom: 12 },
+  setupAppName: { fontSize: 32, fontWeight: "800", color: "#f1f5f9", letterSpacing: 1, marginBottom: 6 },
+  setupTagline: { fontSize: 13, color: "#475569", letterSpacing: 1.5, textTransform: "uppercase" },
   setupCard: {
     backgroundColor: "#111827",
     borderRadius: 24,
